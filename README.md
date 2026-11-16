@@ -1,4 +1,4 @@
-# baan
+<p align="center"><img src="assets/banner.svg" alt="baan" width="640"></p>
 
 **baan** lets AI apps like Gemini, Claude or ChatGPT use tools on **your own computer** over the internet, with a login page built in. One codebase for Linux, macOS and Windows.
 
