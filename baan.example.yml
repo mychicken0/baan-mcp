@@ -3,7 +3,7 @@
 
 server:
   host: 127.0.0.1            # keep loopback; reach it from the internet through a tunnel
-  port: 8790
+  port: 61548
   publicUrl: https://mcp.example.com   # the https address your AI app connects to (without /mcp)
 
 workspace:

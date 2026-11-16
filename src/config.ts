@@ -20,7 +20,7 @@ export interface Config {
 }
 
 const DEFAULTS = {
-  server: { host: "127.0.0.1", port: 8790, publicUrl: "" },
+  server: { host: "127.0.0.1", port: 61548, publicUrl: "" },
   workspace: { cwd: "~", allow: ["~"] },
   tools: ["read"],
   shell: { defaultTimeoutSec: 120, maxTimeoutSec: 600 },
