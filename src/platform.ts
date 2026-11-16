@@ -72,3 +72,36 @@ export function runShell(command: string, cwd: string, timeoutMs: number, signal
     child.on("close", finish);
   });
 }
+
+/** Open a URL in the default browser. Best effort: does nothing if there is no browser. */
+export function openUrl(url: string): void {
+  const [cmd, args] = IS_WINDOWS
+    ? ["rundll32", ["url.dll,FileProtocolHandler", url]]
+    : process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
+  try {
+    const c = spawn(cmd, args, { stdio: "ignore", detached: true, windowsHide: true });
+    c.on("error", () => {});
+    c.unref();
+  } catch { /* no browser */ }
+}
+
+/** Copy text to the clipboard. Resolves true only if a clipboard tool accepted it. */
+export async function copyToClipboard(text: string): Promise<boolean> {
+  const tools: [string, string[]][] = IS_WINDOWS
+    ? [["clip", []]]
+    : process.platform === "darwin"
+      ? [["pbcopy", []]]
+      : [["wl-copy", []], ["xclip", ["-selection", "clipboard"]], ["xsel", ["--clipboard", "--input"]]];
+  for (const [cmd, args] of tools) {
+    const ok = await new Promise<boolean>((done) => {
+      try {
+        const c = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"], windowsHide: true });
+        c.on("error", () => done(false));
+        c.on("close", (code) => done(code === 0));
+        c.stdin?.end(text);
+      } catch { done(false); }
+    });
+    if (ok) return true;
+  }
+  return false;
+}

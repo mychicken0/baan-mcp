@@ -10,36 +10,39 @@
 
 > ⚠️ **Read this first.** Anyone who logs in can do whatever the enabled tools allow. `bash`/`powershell` = full control of your computer as your user, and it is **not** limited by `workspace.allow`. Plugins run with your full rights too. Use a long password, keep baan on `127.0.0.1` behind a tunnel, and only enable what you need. New configs start with `read` only.
 
-## Requirements
-Node.js **22.18+** (runs the TypeScript source directly, no build step).
-
 ## Quick start
+You need [Node.js 22.18+](https://nodejs.org) and [Git](https://git-scm.com). Same commands on Linux, macOS and Windows:
 ```sh
-git clone <this repo> baan && cd baan && npm install
-node src/cli.ts init --public-url https://mcp.your-domain.com    # prints a password once
-node src/cli.ts serve
+git clone https://github.com/mychicken0/baan-mcp.git
+cd baan-mcp
+npm install
+npm start
 ```
-`init` writes `~/.config/baan/baan.yml` (Windows: `%APPDATA%\baan\baan.yml`). Edit it to enable more tools:
-```yaml
-tools: [read, write, edit, bash]   # "bash" becomes powershell on Windows
-```
+That's it. `npm start` walks you through everything, and you mostly just press Enter:
 
-Then make `http://127.0.0.1:8790` reachable at your public URL with a tunnel (see below) and add `https://<public-url>/mcp` as a connector in your AI app. A login page opens; type the password and press **Allow**.
+1. **Folder** the AI may work in (default: your home folder).
+2. **What it may do:** read only (default) / + create and edit files / + run commands.
+3. **Internet address.** No domain needed: baan sets up **Tailscale Funnel** for you. It installs Tailscale if missing (Linux), opens the free sign-in page in your browser, turns Funnel on, and finds your `https://<computer>.<tailnet>.ts.net` address itself. Already have Cloudflare Tunnel or your own domain? Pick that instead.
+4. **Password** is made for you.
+
+At the end it prints the URL to paste into your AI app (also copied to the clipboard) and the password for the login page. Next time just run `npm start`.
 
 ## Commands
 | | |
 |---|---|
-| `baan init [--public-url URL] [--port N] [--tools a,b] [--password-file F]` | create config + password |
+| `npm start` (`baan start`) | first run: guided setup, then start. Later: start |
+| `npm run setup` (`baan setup`) | run the guided setup again |
+| `npm run passwd` (`baan passwd`) | new random password; signs out every connected app |
+| `baan init [--public-url URL] [--port N] [--tools a,b] [--password-file F]` | create config + password without questions (scripts) |
 | `baan serve` | start the server |
-| `baan passwd` | new random password; signs out every connected app |
 | `baan tools` | list enabled tools |
 
 Every command takes `--config FILE`. Env overrides: `BAAN_CONFIG`, `BAAN_DATA_DIR`, `BAAN_HOST`, `BAAN_PORT`, `BAAN_PUBLIC_URL`.
 
 ## Getting a public https URL
-baan only listens on `127.0.0.1`. Use a tunnel with a URL that **doesn't change** (a changing URL disconnects your AI app):
-- **Cloudflare Tunnel** (you have a domain on Cloudflare): route `mcp.your-domain.com` → `http://127.0.0.1:8790`.
-- **Tailscale Funnel** (no domain needed): `tailscale funnel 8790`, then use the `https://<machine>.<tailnet>.ts.net` URL as `publicUrl`.
+baan only listens on `127.0.0.1`; the AI app reaches it through a tunnel. The URL must **not change** (a changing URL disconnects your AI app).
+- **Tailscale Funnel** (default in setup, no domain): setup runs `tailscale funnel --bg --https=443 http://127.0.0.1:<port>`. If port 443 is already used by another Tailscale service, it uses 8443 or 10000 instead and never overwrites it. The first time, Tailscale asks you to allow Funnel in the browser.
+- **Your own domain** (Cloudflare Tunnel, reverse proxy): point it at `http://127.0.0.1:<port>` and enter the address in setup.
 
 ## Plugins
 ```yaml
@@ -82,6 +85,6 @@ npm test          # end-to-end: OAuth flow + all tools + image bytes unchanged
 ```
 
 ## Status
-Early prototype. Planned: `baan expose tailscale|cloudflare`, a setup page in the browser, `baan plugin add/remove`, hot-reload of plugins, single-file installers.
+Early prototype. Planned: run in the background / at login, a setup page in the browser, `baan plugin add/remove`, hot-reload of plugins, single-file installers.
 
 Inspired by [pi](https://github.com/earendil-works/pi) (minimal tool set) and DeepSeek Harness (everything is a plugin). Not affiliated with either.

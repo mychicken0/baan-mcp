@@ -11,6 +11,8 @@ import { loadTools } from "./plugins.ts";
 
 const HELP = `baan — remote MCP server for your own computer
 
+  baan start                              first time: guided setup, then run. After that: run
+  baan setup                              guided setup again (folder, tools, Tailscale, password)
   baan init [--public-url URL] [--port N] [--tools read,write,edit,bash] [--password-file FILE] [--force]
   baan serve
   baan passwd [--password-file FILE]     new random password, signs out every app
@@ -44,10 +46,17 @@ async function main() {
       help: { type: "boolean", short: "h" },
     },
   });
-  const cmd = positionals[0];
+  let cmd = positionals[0];
   const configPath = values.config ? expandPath(values.config) : defaultConfigPath();
 
   if (!cmd || values.help) { console.log(HELP); return; }
+
+  if (cmd === "setup" || (cmd === "start" && !existsSync(configPath))) {
+    const { runSetup } = await import("./setup.ts");
+    await runSetup(configPath);
+    return;
+  }
+  if (cmd === "start") cmd = "serve";
 
   if (cmd === "init") {
     if (existsSync(configPath) && !values.force) {
