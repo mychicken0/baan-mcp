@@ -23,11 +23,20 @@ That's it. `npm start` walks you through everything, with colors and icons, and 
 1. **Folder** the AI may work in (default: your home folder).
 2. **What it may do:** ⭐ everything like pi: read, write, edit and run commands (recommended) / files only / read only.
 3. **Internet address.** No domain needed: baan sets up **Tailscale Funnel** for you. It installs Tailscale if missing (Linux), opens the free sign-in page in your browser, turns Funnel on, and finds your `https://<computer>.<tailnet>.ts.net` address itself. Already have Cloudflare Tunnel or your own domain? Pick that instead.
-4. **Password** is made for you.
+4. **Keep it running:** ⭐ always, in the background, and **start with the computer** (recommended) / only while the window is open.
+5. **Password** is made for you.
 
-At the end it prints the URL to paste into your AI app (also copied to the clipboard) and the password for the login page. Next time just run `npm start`.
+At the end it prints the URL to paste into your AI app (also copied to the clipboard) and the password for the login page. In background mode you can then **close the window**: baan keeps running and comes back by itself after a reboot. No admin rights needed:
 
-**Changing things later:** edit the config (`npm run config`, or press **c** in the baan window) and save. baan checks it and **restarts by itself**. It does the same when a plugin's code changes. If the new config is broken, the old server keeps running and you see the error. Keys in the baan window: **r** restart, **c** edit config, **g** guide, **q** quit.
+| OS | How it starts with the computer |
+|---|---|
+| Linux | systemd user service (`~/.config/systemd/user/baan.service`). With "linger" on (setup offers it) it starts at boot, before anyone logs in. No systemd: desktop autostart at login. |
+| macOS | launchd agent (`~/Library/LaunchAgents/com.baan.mcp.plist`), at login |
+| Windows | hidden launcher in the Startup folder, at login. No console window |
+
+Picked "only while the window is open"? Press **b** in the baan window any time to move it to the background.
+
+**Changing things later:** edit the config (`npm run config`, or press **c** in the baan window) and save. baan checks it and **restarts by itself**. It does the same when a plugin's code changes. If the new config is broken, the old server keeps running and you see the error. This works in the background too. Keys in the baan window: **b** run in background, **r** restart, **c** edit config, **g** guide, **q** quit.
 
 📖 **[GUIDE.md](GUIDE.md)**: change settings, add or remove plugins, write your own plugin, troubleshooting.
 
@@ -36,6 +45,10 @@ At the end it prints the URL to paste into your AI app (also copied to the clipb
 |---|---|
 | `npm start` (`baan start`) | first run: guided setup. Then run, and restart by itself on changes |
 | `npm run setup` (`baan setup`) | run the guided setup again |
+| `npm run background` (`baan background`) | run in the background and start with the computer |
+| `npm stop` (`baan stop`) | stop the background copy; it no longer starts with the computer |
+| `npm run status` (`baan status`) | running? URL, config and log location |
+| `npm run logs` (`baan logs`) | last lines of the background log |
 | `npm run config` (`baan config`) | open the config file in an editor |
 | `npm run check` (`baan check`) | check the config and load every plugin, without starting |
 | `npm run passwd` (`baan passwd`) | new random password; signs out every connected app |
@@ -92,6 +105,6 @@ npm test          # end-to-end: OAuth flow + all tools + image bytes unchanged
 ```
 
 ## Status
-Early prototype. Planned: run in the background / at login, a setup page in the browser, `baan plugin add/remove`, single-file installers.
+Early prototype. Planned: a setup page in the browser, `baan plugin add/remove`, single-file installers.
 
 Inspired by [pi](https://github.com/earendil-works/pi) (minimal tool set) and DeepSeek Harness (everything is a plugin). Not affiliated with either.

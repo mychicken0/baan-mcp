@@ -2,9 +2,37 @@
 
 How to change settings, add plugins and build new things once baan is set up.
 
+## Background and start with the computer
+
+Setup's recommended choice runs baan **in the background and starts it with the computer**, so you can close the window. If you picked "only while this window is open", press **b** in the baan window (or run `npm run background`) to switch.
+
+| Command | |
+|---|---|
+| `npm run status` | is it running, the URL for your AI app, where the config and log are |
+| `npm run logs` | last lines of the log (`baan.log`, next to `baan.yml`) |
+| `npm stop` | stop it, and it no longer starts with the computer |
+| `npm run background` | turn it on again (also restarts it) |
+| `npm start` | when it already runs in the background: just shows the status |
+
+No admin rights are needed. What it uses:
+
+| OS | Starts | File |
+|---|---|---|
+| Linux (systemd) | at boot if "linger" is on, else when you log in | `~/.config/systemd/user/baan.service` |
+| Linux (no systemd) | when you log in to the desktop | `~/.config/autostart/baan.desktop` |
+| macOS | when you log in | `~/Library/LaunchAgents/com.baan.mcp.plist` |
+| Windows | when you log in, no window | `baan.vbs` in the Startup folder (`shell:startup`) |
+
+Linux "linger" (start before login, good for a server with no screen): `sudo loginctl enable-linger $USER`. Setup offers to do it.
+On Windows and macOS, turn on automatic login if the computer should serve after a power cut with nobody there.
+
+In the background, baan restarts by itself exactly like in a window (table below), and if the server crashes it starts it again (after 5 s, then longer).
+
+To run it in a window instead: `npm stop`, then `npm start`.
+
 ## How restarting works
 
-Run baan with `npm start` and keep the window open. It **restarts by itself** when:
+With `npm start` in a window, or in the background, baan **restarts by itself** when:
 
 | You… | baan… |
 |---|---|
@@ -20,6 +48,7 @@ Keys in the baan window:
 
 | Key | |
 |---|---|
+| **b** | move baan to the background (starts with the computer) and let you close the window |
 | **r** | restart now |
 | **c** | open the config in an editor |
 | **g** | show where this guide is |
@@ -183,10 +212,10 @@ Other things to know:
 git pull
 npm install
 ```
-baan restarts by itself when the code changes. If `npm install` added new packages, press **r** afterwards.
+baan restarts by itself when the code changes. If `npm install` added new packages, press **r** afterwards (in the background: `npm run background`).
 
 ## Run the setup again
-Stop baan (**q**), then `npm run setup`. It asks the same 4 questions and makes a new password.
+`npm run setup` (stop a baan window first with **q**; a background copy is stopped for you). It asks the same 5 questions and makes a new password.
 
 ## Look and feel
 Colors and emoji turn on by themselves when the terminal supports them.
@@ -207,6 +236,8 @@ On Windows, emoji show in **Windows Terminal** and VS Code. The old blue "Comman
 | `Not restarted. The new setup has a problem` | Read the lines under it, fix `baan.yml` or the plugin, save. The old server is still running. |
 | `baan stopped (exit 1)` | Same: fix, save, or press **r**. |
 | `Plugin "x" could not be loaded` | Check `from:`. For npm plugins, run `npm install` in the baan folder. |
+| baan doesn't start after a reboot | `npm run status`, then `npm run logs`. Moved or deleted the baan folder, or changed Node version? Run `npm run background` again. |
+| `already running in another window` | baan runs somewhere else. Go to that window, or close it first. |
 | `address already in use` | Another program uses `server.port`. Change the port and update your tunnel, or stop the other program. |
 | The AI app asks you to sign in again | The password changed, or `publicUrl` changed. Sign in again. |
 | The AI app can't reach baan | Open your public URL in a browser. It should say `baan MCP server`. With Tailscale, check `tailscale funnel status`. |

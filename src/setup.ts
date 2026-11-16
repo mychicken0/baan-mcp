@@ -1,6 +1,7 @@
 // First-run setup. `npm start` runs this when there is no config yet.
 // It asks a few questions, gets a public https URL (Tailscale Funnel by default: free, no domain needed),
-// writes the config, sets a password, starts the server and prints exactly what to paste into the AI app.
+// writes the config, sets a password, starts baan (in the background and with the computer, by default)
+// and prints exactly what to paste into the AI app.
 import { createInterface, type Interface } from "node:readline";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -247,8 +248,8 @@ async function waitReachable(publicUrl: string, maxSec: number): Promise<boolean
   return false;
 }
 
-/** Returns true when setup finished (the caller then starts baan). */
-export async function runSetup(configPath: string): Promise<boolean> {
+/** false: stopped. "background": baan already runs as a service. "window": the caller runs it in this terminal. */
+export async function runSetup(configPath: string): Promise<false | "background" | "window"> {
   const w = new Wizard();
   try {
     ui.clearScreen();
@@ -258,8 +259,13 @@ export async function runSetup(configPath: string): Promise<boolean> {
       console.log();
       ui.say(`baan is already set up ${c.gray(`(${configPath})`)}`);
       if (!(await w.yes("Set it up again? Your AI apps will need to sign in again", false))) return false;
+      const service = await import("./service.ts");
+      if (service.installed()) {
+        await service.disable(configPath); // frees the port; turned on again below if you pick it
+        ui.note("   Stopped the background copy for now.");
+      }
     }
-    const TOTAL = 4;
+    const TOTAL = 5;
 
     ui.step(1, TOTAL, "folder", "Folder");
     ui.say("The AI can only read and edit files inside this folder.");
@@ -314,7 +320,23 @@ export async function runSetup(configPath: string): Promise<boolean> {
       ui.tip(`Point that address at ${c.bold(`http://${host}:${port}`)}`);
     } else publicUrl = `http://localhost:${port}`;
 
-    ui.step(4, TOTAL, "key", "Password");
+    ui.step(4, TOTAL, "rocket", "Keep it running");
+    const keep = await w.choose("When should baan run?", [
+      { icon: "rocket", label: "Always, in the background", note: "recommended", tone: "good",
+        detail: "starts by itself with the computer — you can close this window" },
+      { icon: "laptop", label: "Only while this window is open", detail: "stops when you close it (press b later to switch)" },
+    ]);
+    const background = keep === 1;
+    if (background && IS_LINUX) {
+      const service = await import("./service.ts");
+      if (service.kind() === "systemd" && !service.linger()) {
+        ui.say(`${ui.icon("lock")}To start ${c.bold("before anyone logs in")} (right after the computer starts), Linux needs admin rights once.`);
+        if (await w.yes(`Run ${c.cyan(`sudo loginctl enable-linger ${userInfo().username}`)}? ${c.gray("(No = starts when you log in)")}`, true))
+          await w.interactive("sudo", ["loginctl", "enable-linger", userInfo().username]);
+      }
+    }
+
+    ui.step(5, TOTAL, "key", "Password");
     const password = randomToken(18);
     ui.ok("A strong password was made for you.");
     ui.note("   You type it once, on the login page, when you connect an AI app.");
@@ -337,6 +359,23 @@ export async function runSetup(configPath: string): Promise<boolean> {
     const server = await startServer(config, { quiet: true });
 
     const reachable = how === 3 || (await waitReachable(config.server.publicUrl, how === 1 ? 600 : 60));
+    await server.close(); // from here baan runs with auto-restart: as a background service, or in this window
+
+    let bgResult: import("./service.ts").EnableResult | null = null;
+    if (background) {
+      const service = await import("./service.ts");
+      ui.working(`${c.bold("Starting baan in the background")} ${c.gray(`(${service.KIND_TEXT[service.kind()]})`)}…`);
+      try {
+        bgResult = await service.enable(configPath);
+        if (!(await service.waitServing(configPath, 20))) throw new Error(`It did not answer. Log:\n${service.tail(config.dataDir, 15)}`);
+      } catch (e) {
+        bgResult = null;
+        await service.disable(configPath).catch(() => null);
+        ui.fail(`Could not run in the background: ${(e as Error).message}`);
+        ui.tip("baan runs in this window instead. Try again later with: npm run background");
+      }
+    }
+
     const mcpUrl = `${config.server.publicUrl}/mcp`;
     const copied = await copyToClipboard(mcpUrl);
 
@@ -361,12 +400,19 @@ export async function runSetup(configPath: string): Promise<boolean> {
       ["tools", "Tools", tools.map((t) => (t === "bash" ? SHELL_TOOL_NAME : t)).join(", ") + (image ? ", view_image" : "")],
       ["gear", "Config", configPath],
     ]);
+    if (bgResult) {
+      const { printBackground } = await import("./supervisor.ts");
+      printBackground(bgResult, configPath, config.dataDir);
+      ui.tip(`Change something later? Edit the config and save — baan restarts by itself. ${c.gray("See GUIDE.md")}`);
+      ui.rule(c.green);
+      console.log();
+      return "background";
+    }
     console.log();
     ui.tip(`Keep this window open while you use it. Next time just run: ${c.bold(c.cyan("npm start"))}`);
     ui.tip(`Change something later? Edit the config and save — baan restarts by itself. ${c.gray("See GUIDE.md")}`);
     ui.rule(c.green);
-    await server.close(); // npm start now runs it with auto-restart
-    return true;
+    return "window";
   } catch (e) {
     if (e instanceof SetupError) { ui.fail(e.message); process.exitCode = 1; return false; }
     throw e;

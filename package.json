@@ -16,6 +16,10 @@
     "passwd": "node src/cli.ts passwd",
     "config": "node src/cli.ts config",
     "check": "node src/cli.ts check",
+    "background": "node src/cli.ts background",
+    "stop": "node src/cli.ts stop",
+    "status": "node src/cli.ts status",
+    "logs": "node src/cli.ts logs",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts"
   },

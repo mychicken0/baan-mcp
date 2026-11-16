@@ -15,7 +15,12 @@ const HELP = `baan — remote MCP server for your own computer
 
   baan start                              first time: guided setup. Then run, and restart by itself when the config,
                                           a plugin or baan's code changes (keys: r restart, c edit config, q quit)
-  baan setup                              guided setup again (folder, tools, Tailscale, password)
+  baan setup                              guided setup again (folder, tools, Tailscale, background, password)
+  baan background                         run in the background and start with the computer (all OSes, no admin)
+  baan stop                               stop the background copy; it no longer starts with the computer
+  baan status                             is it running? where are the logs?
+  baan logs                               last lines of the background log
+  baan run                                what the background service runs: auto-restart, no keyboard
   baan config                             open the config file in an editor
   baan check                              check the config and load every plugin, without starting
   baan init [--public-url URL] [--port N] [--tools read,write,edit,bash] [--password-file FILE] [--force]
@@ -43,6 +48,25 @@ async function newPassword(state: State, file?: string) {
   }
 }
 
+async function status(configPath: string) {
+  const service = await import("./service.ts");
+  const config = loadConfig(configPath);
+  const k = service.installed();
+  const up = await service.serving(configPath);
+  console.log();
+  if (up) ui.ok(`baan is running${k ? " in the background" : " (in a terminal window)"}.`);
+  else ui.warn("baan is not running.");
+  ui.rows([
+    ["rocket", "Starts with computer", k ? `yes ${c.gray(`(${service.KIND_TEXT[k]})`)}` : `no ${c.gray("(turn on: npm run background)")}`],
+    ["link", "URL for your AI app", c.bold(c.cyan(`${config.server.publicUrl}/mcp`))],
+    ["laptop", "Local", `http://${config.server.host}:${config.server.port}`],
+    ["gear", "Config", configPath],
+    ...(k ? [["book", "Logs", `npm run logs   ${c.gray(service.logFile(config.dataDir))}`] as [ui.IconName, string, string]] : []),
+  ]);
+  if (k) ui.tip(`Stop it: ${c.bold("npm stop")}`);
+  console.log();
+}
+
 async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
@@ -63,8 +87,8 @@ async function main() {
 
   if (cmd === "setup" || (cmd === "start" && !existsSync(configPath))) {
     const { runSetup } = await import("./setup.ts");
-    const done = await runSetup(configPath);
-    if (cmd === "start" && done) {
+    const mode = await runSetup(configPath);
+    if (mode === "window") {
       const { supervise } = await import("./supervisor.ts");
       await supervise(configPath, { quietFirst: true });
     }
@@ -72,8 +96,72 @@ async function main() {
   }
   if (cmd === "start") {
     loadConfig(configPath); // fail early with a clear message
+    const service = await import("./service.ts");
+    if (service.installed()) {
+      // Already set to run in the background: make sure it runs, show where things are, and let the window go.
+      if (!(await service.serving(configPath))) {
+        ui.working("baan is set to run in the background but is not answering. Starting it…");
+        await service.enable(configPath);
+        await service.waitServing(configPath, 20);
+      }
+      await status(configPath);
+      ui.tip(`To run it in this window instead: ${c.bold("npm stop")}, then ${c.bold("npm start")}.`);
+      return;
+    }
+    if (await service.serving(configPath)) {
+      ui.warn("baan is already running in another window.");
+      ui.tip(`Go to that window, or close it first. Port: ${loadConfig(configPath).server.port}`);
+      process.exitCode = 1;
+      return;
+    }
     const { supervise } = await import("./supervisor.ts");
     await supervise(configPath);
+    return;
+  }
+  if (cmd === "run") {
+    loadConfig(configPath);
+    const { supervise } = await import("./supervisor.ts");
+    await supervise(configPath, { background: true, quietFirst: false });
+    return;
+  }
+  if (cmd === "background") {
+    const config = loadConfig(configPath);
+    const service = await import("./service.ts");
+    const { printBackground } = await import("./supervisor.ts");
+    if (!service.installed() && (await service.serving(configPath))) {
+      ui.warn("baan is running in another window. Press b in that window instead, or close it first.");
+      process.exitCode = 1;
+      return;
+    }
+    ui.working("Starting baan in the background…");
+    const r = await service.enable(configPath);
+    if (!(await service.waitServing(configPath, 20))) {
+      ui.fail(`baan did not answer. Last lines of ${service.logFile(config.dataDir)}:`);
+      console.error(ui.passthrough(service.tail(config.dataDir, 20)));
+      process.exitCode = 1;
+      return;
+    }
+    printBackground(r, configPath, config.dataDir);
+    return;
+  }
+  if (cmd === "stop") {
+    const service = await import("./service.ts");
+    const k = await service.disable(configPath);
+    const up = existsSync(configPath) ? !(await service.waitServing(configPath, 5, false)) : false;
+    if (k) ui.ok(`Stopped. baan no longer starts with the computer. ${c.gray(`(${service.KIND_TEXT[k]} removed)`)}`);
+    else ui.say("baan was not set to run in the background.");
+    if (up) ui.warn("Something still answers on baan's port — probably baan in another window. Press q there.");
+    ui.tip(`Run it again: ${c.bold("npm start")} ${c.gray("(this window)")} or ${c.bold("npm run background")}`);
+    return;
+  }
+  if (cmd === "status") { await status(configPath); return; }
+  if (cmd === "logs") {
+    const service = await import("./service.ts");
+    const { dataDir } = loadConfig(configPath);
+    const t = service.tail(dataDir, 60);
+    console.log(t || "(no background log yet)");
+    console.log();
+    ui.tip(`Full log: ${service.logFile(dataDir)}`);
     return;
   }
   if (cmd === "config") {

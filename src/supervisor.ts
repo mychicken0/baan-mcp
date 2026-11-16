@@ -5,8 +5,10 @@
 //  - you press r
 // Before every restart the new setup is checked in a separate process. If it is broken
 // (YAML typo, plugin that won't load), the running server keeps going and the error is shown.
+// Background mode (`baan run`, used by the start-with-computer service) is the same without the keyboard,
+// writes a pid file, and also brings the server back by itself if it crashes.
 import { spawn, type ChildProcess } from "node:child_process";
-import { watch, readFileSync, existsSync, statSync, type FSWatcher } from "node:fs";
+import { watch, readFileSync, existsSync, statSync, writeFileSync, rmSync, mkdirSync, type FSWatcher } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
@@ -14,6 +16,7 @@ import { loadConfig } from "./config.ts";
 import { openInEditor, stopProcessTree } from "./platform.ts";
 import * as ui from "./ui.ts";
 import { c } from "./ui.ts";
+import * as service from "./service.ts";
 
 const CLI = fileURLToPath(new URL("./cli.ts", import.meta.url));
 const SRC_DIR = fileURLToPath(new URL(".", import.meta.url));
@@ -67,7 +70,11 @@ function check(configPath: string): Promise<{ ok: boolean; out: string }> {
   });
 }
 
-export async function supervise(configPath: string, opts: { quietFirst?: boolean } = {}): Promise<void> {
+export async function supervise(configPath: string, opts: { quietFirst?: boolean; background?: boolean } = {}): Promise<void> {
+  const bg = !!opts.background;
+  let crashes = 0;
+  let startedAt = 0;
+  let retry: NodeJS.Timeout | undefined;
   let child: ChildProcess | null = null;
   let busy = false;
   let pending: { why: string; force: boolean } | null = null;
@@ -82,14 +89,26 @@ export async function supervise(configPath: string, opts: { quietFirst?: boolean
       stdio: ["ignore", "inherit", "inherit"], env: childEnv(quiet), windowsHide: true,
     });
     child = ch;
+    startedAt = Date.now();
     ch.on("exit", (code, sig) => {
       if (child !== ch) return; // replaced on purpose
       child = null;
       if (quitting) return;
       console.log();
-      ui.fail(`baan stopped ${c.gray(`(exit ${code ?? sig})`)}`);
+      ui.fail(`baan stopped ${c.gray(`(exit ${code ?? sig})`)}  ${ui.time()}`);
+      if (bg) return retryLater();
       ui.tip(`Fix the problem above and save the config, or press ${c.bold("r")} to try again.`);
     });
+  };
+
+  /** Background mode: bring the server back after a crash, waiting longer each time (5 s … 1 min). */
+  const retryLater = () => {
+    if (quitting) return;
+    crashes = Date.now() - startedAt > 120_000 ? 1 : crashes + 1;
+    const sec = Math.min(60, 5 * crashes);
+    ui.note(`Trying again in ${sec} s.`);
+    clearTimeout(retry);
+    retry = setTimeout(() => void restart("Starting again after a stop", true), sec * 1000);
   };
 
   let timer: NodeJS.Timeout | undefined;
@@ -142,6 +161,7 @@ export async function supervise(configPath: string, opts: { quietFirst?: boolean
         ui.fail("Not restarted. The new setup has a problem:");
         console.error(ui.passthrough(r.out) + "\n");
         ui.tip(child ? "The server keeps running with the old setup. Fix it and save again." : "Fix it and save again.");
+        if (bg && !child) retryLater();
         return;
       }
       if (child) { const old = child; child = null; await stopProcessTree(old); }
@@ -159,37 +179,75 @@ export async function supervise(configPath: string, opts: { quietFirst?: boolean
     if (quitting) return;
     quitting = true;
     clearTimeout(timer);
+    clearTimeout(retry);
     for (const w of watchers) w.close();
     console.log();
     ui.say(`${ui.icon("stop")}Stopping baan…`);
     if (child) await stopProcessTree(child);
-    if (process.stdin.isTTY) process.stdin.setRawMode(false);
+    if (bg) rmSync(service.pidFile(dataDir), { force: true });
+    if (process.stdin.isTTY && !bg) process.stdin.setRawMode(false);
     process.exit(0);
+  };
+
+  /** Key b: move this window's baan to the background service (starts with the computer), then let the window go. */
+  const toBackground = async () => {
+    if (quitting) return;
+    quitting = true;
+    clearTimeout(timer);
+    for (const w of watchers) w.close();
+    watchers = [];
+    console.log();
+    ui.working(`${c.bold("Moving baan to the background")} ${c.gray("— it will start by itself when the computer starts…")}`);
+    if (child) { const old = child; child = null; await stopProcessTree(old); }
+    try {
+      const r = await service.enable(configPath);
+      const up = await service.waitServing(configPath, 20);
+      if (!up) throw new Error(`It did not answer. Last lines of ${service.logFile(dataDir)}:\n${service.tail(dataDir, 15)}`);
+      printBackground(r, configPath, dataDir);
+      if (process.stdin.isTTY) process.stdin.setRawMode(false);
+      process.exit(0);
+    } catch (e) {
+      ui.fail(`Could not run in the background: ${(e as Error).message}`);
+      ui.tip("baan keeps running in this window instead.");
+      quitting = false;
+      start(true);
+      rewatch();
+      help();
+    }
   };
 
   const help = () => {
     console.log();
-    ui.say(`${ui.key("r", "restart")}   ${ui.key("c", "edit config")}   ${ui.key("g", "guide")}   ${ui.key("q", "quit")}`);
+    ui.say(`${ui.key("b", "run in background")}   ${ui.key("r", "restart")}   ${ui.key("c", "edit config")}   ${ui.key("g", "guide")}   ${ui.key("q", "quit")}`);
+    ui.tip(`Press ${c.bold("b")} to keep baan running after you close this window ${c.gray("(and start it with the computer)")}.`);
     ui.tip(`Save ${c.bold(basename(configPath))} and baan restarts by itself.`);
     console.log();
   };
 
+  if (bg) {
+    mkdirSync(dataDir, { recursive: true });
+    service.trimLog(dataDir);
+    writeFileSync(service.pidFile(dataDir), String(process.pid));
+    console.log();
+    ui.say(`${ui.icon("rocket")}baan started in the background ${c.gray(`(pid ${process.pid})`)}  ${new Date().toISOString()}`);
+  }
   start(!!opts.quietFirst);
   rewatch();
   await new Promise((r) => setTimeout(r, 800)); // let the server print its banner first
-  if (!quitting) help();
+  if (!quitting && !bg) help();
 
   process.on("SIGINT", () => void quit());
   process.on("SIGTERM", () => void quit());
-  process.on("SIGHUP", () => void quit());
+  process.on("SIGHUP", () => void (bg ? undefined : quit()));
 
-  if (process.stdin.isTTY) {
+  if (process.stdin.isTTY && !bg) {
     process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdin.on("data", async (d: Buffer) => {
       const k = d.toString().toLowerCase();
       if (k === "\x03" || k === "q") return void quit();
       if (k === "r") return void restart("Restart (r)", true);
+      if (k === "b") return void toBackground();
       if (k === "g") {
         console.log();
         ui.say(`${ui.icon("book")}Guide: ${c.bold(c.cyan(GUIDE))}`);
@@ -208,4 +266,20 @@ export async function supervise(configPath: string, opts: { quietFirst?: boolean
     });
   }
   await new Promise(() => {}); // run until quit
+}
+
+/** What to tell the user once baan runs in the background. */
+export function printBackground(r: service.EnableResult, configPath: string, dataDir: string): void {
+  console.log();
+  ui.ok(`baan is running in the background. ${c.bold("You can close this window.")}`);
+  ui.say(`${ui.icon("rocket")}${r.atBoot ? "It starts by itself when the computer starts." : "It starts by itself when you log in to this computer."} ${c.gray(`(${service.KIND_TEXT[r.kind]})`)}`);
+  if (r.note) ui.note(`   ${r.note}`);
+  ui.tip(`Save ${c.bold(basename(configPath))} and it still restarts by itself.`);
+  console.log();
+  ui.rows([
+    ["gear", "Status", "npm run status"],
+    ["book", "Logs", `npm run logs   ${c.gray(service.logFile(dataDir))}`],
+    ["stop", "Stop", `npm stop   ${c.gray("(stops it and no longer starts with the computer)")}`],
+  ]);
+  console.log();
 }
