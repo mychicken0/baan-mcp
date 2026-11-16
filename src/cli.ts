@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "n
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import YAML from "yaml";
-import { REPO_DIR, defaultConfigPath, loadConfig } from "./config.ts";
+import { fileURLToPath } from "node:url";
+import { defaultConfigPath, loadConfig } from "./config.ts";
 import { State, randomToken } from "./state.ts";
 import { expandPath } from "./platform.ts";
 import { loadTools } from "./plugins.ts";
@@ -52,7 +53,7 @@ async function main() {
     if (existsSync(configPath) && !values.force) {
       console.log(`Config already exists: ${configPath} (use --force to overwrite)`);
     } else {
-      const doc = YAML.parseDocument(readFileSync(join(REPO_DIR, "baan.example.yml"), "utf8"));
+      const doc = YAML.parseDocument(readFileSync(fileURLToPath(new URL("../baan.example.yml", import.meta.url)), "utf8"));
       const port = Number(values.port ?? doc.getIn(["server", "port"]));
       doc.setIn(["server", "port"], port);
       doc.setIn(["server", "publicUrl"], values["public-url"] ?? `http://localhost:${port}`);

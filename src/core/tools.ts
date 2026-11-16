@@ -1,17 +1,13 @@
 // The 4 built-in tools, same set as pi: read, write, edit, bash (powershell on Windows).
 // Each one can be switched off in baan.yml -> tools.
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { dirname, extname } from "node:path";
+import { dirname } from "node:path";
 import * as z from "zod";
 import type { Config } from "../config.ts";
 import type { ToolDef } from "../plugin.ts";
 import { SHELL_TOOL_NAME, runShell } from "../platform.ts";
 
-const MAX_LINES = 2000;
-const MAX_BYTES = 50 * 1024;
-const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".heic", ".heif", ".avif"]);
-
-function tailTruncate(text: string): string {
+function tailTruncate(text: string, MAX_LINES: number, MAX_BYTES: number): string {
   let lines = text.split("\n");
   let cut = false;
   if (lines.length > MAX_LINES) { lines = lines.slice(-MAX_LINES); cut = true; }
@@ -22,6 +18,7 @@ function tailTruncate(text: string): string {
 }
 
 export function coreTools(config: Config): ToolDef[] {
+  const { maxLines: MAX_LINES, maxBytes: MAX_BYTES } = config.output;
   const all: ToolDef[] = [
     {
       name: "read",
@@ -35,14 +32,9 @@ export function coreTools(config: Config): ToolDef[] {
       readOnly: true,
       async run({ path, offset, limit }, ctx) {
         const file = ctx.resolvePath(path);
-        if (IMAGE_EXT.has(extname(file).toLowerCase())) {
-          return ctx.toolNames.includes("view_image")
-            ? `${file} is an image. Use the view_image tool to see it.`
-            : `${file} is an image. read only handles text; enable the "image" plugin to view images.`;
-        }
         if (!(await stat(file)).isFile()) throw new Error(`Not a file: ${file}`);
         const buf = await readFile(file);
-        if (buf.subarray(0, 8192).includes(0)) throw new Error(`${file} looks like a binary file`);
+        if (buf.subarray(0, 8192).includes(0)) throw new Error(`${file} looks like a binary file; read only handles text`);
         const lines = buf.toString("utf8").split("\n");
         const start = (offset ?? 1) - 1;
         if (start >= lines.length) throw new Error(`offset ${offset} is past the end (${lines.length} lines)`);
@@ -112,7 +104,7 @@ export function coreTools(config: Config): ToolDef[] {
         const sec = Math.min(timeout ?? config.shell.defaultTimeoutSec, config.shell.maxTimeoutSec);
         const r = await runShell(command, ctx.cwd, sec * 1000, ctx.signal);
         const status = r.timedOut ? `killed after ${sec}s timeout` : `exit code ${r.exitCode}`;
-        return `${tailTruncate(r.output)}\n[${status}]`;
+        return `${tailTruncate(r.output, MAX_LINES, MAX_BYTES)}\n[${status}]`;
       },
     },
   ];

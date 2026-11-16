@@ -8,7 +8,7 @@ server:
 
 workspace:
   cwd: "~"                   # working directory for the shell tool and relative paths
-  allow:                     # read/write/edit/view_image only work inside these folders
+  allow:                     # file tools only work inside these folders
     - "~"
 
 # Built-in tools (same as pi). Remove a line to turn a tool off.
@@ -24,6 +24,10 @@ shell:
   defaultTimeoutSec: 120
   maxTimeoutSec: 600
 
+output:                           # read / bash output limit
+  maxLines: 2000
+  maxBytes: 51200
+
 auth:
   accessTokenTtlSec: 3600
   refreshTokenTtlSec: 2592000     # 30 days
@@ -35,9 +39,9 @@ audit:
   file: audit.log                 # relative to the config folder; one JSON line per tool call
 
 # Plugins. A plugin runs with your full user rights — only add ones you trust.
-#   name: true                      -> ./plugins/<name> from this repo
-#   name: { from: ./path/or/npm-package, ...options }
-#   name: false                     -> installed but off
+#   name: { from: npm-package-or-./path, ...options }   ("from" is required)
+#   name: false                                         -> installed but off
 plugins:
   image:
+    from: baan-plugin-image       # bundled in plugins/image as its own package
     maxBytes: 20971520            # 20 MB. Images are never resized; bigger files are refused.

@@ -1,6 +1,6 @@
 # baan
 
-**baan** (บ้าน, "home") lets AI apps like Gemini, Claude or ChatGPT use tools on **your own computer** over the internet, with a login page built in. One codebase for Linux, macOS and Windows.
+**baan** lets AI apps like Gemini, Claude or ChatGPT use tools on **your own computer** over the internet, with a login page built in. One codebase for Linux, macOS and Windows.
 
 - **4 built-in tools, same as [pi](https://github.com/earendil-works/pi):** `read`, `write`, `edit`, `bash` (`powershell` on Windows). Each can be turned off.
 - **Everything else is a plugin.** The repo ships one: `image` → `view_image`, which sends pictures at **original resolution, never resized or recompressed**.
@@ -44,7 +44,7 @@ baan only listens on `127.0.0.1`. Use a tunnel with a URL that **doesn't change*
 ## Plugins
 ```yaml
 plugins:
-  image: { maxBytes: 20971520 }        # ./plugins/image from this repo
+  image: { from: baan-plugin-image, maxBytes: 20971520 }   # bundled package in plugins/image
   mytool: { from: ./my-plugin.ts }     # local file
   other: { from: some-npm-package }    # installed package (must ship JS)
   image: false                         # keep installed, turn off

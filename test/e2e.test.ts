@@ -152,7 +152,8 @@ test("view_image returns the original bytes, not resized", async () => {
   assert.equal(r.content[1].type, "image");
   assert.equal(r.content[1].mimeType, "image/png");
   assert.ok(Buffer.from(r.content[1].data, "base64").equals(img), "image bytes changed");
-  assert.match((await call("read", { path: "big.png" })).content[0].text, /view_image/);
+  const rr = await call("read", { path: "big.png" });
+  assert.ok(rr.isError && /binary/.test(rr.content[0].text), "core read must not know about images");
 });
 
 test("audit log records tool calls", () => {

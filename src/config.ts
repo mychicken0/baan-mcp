@@ -1,11 +1,8 @@
 // Config = built-in defaults <- YAML file <- environment variables. Nothing user-specific lives in the code.
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { defaultConfigDir, expandPath } from "./platform.ts";
-
-export const REPO_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 export interface PluginEntry { name: string; from: string; enabled: boolean; options: Record<string, unknown> }
 
@@ -16,6 +13,7 @@ export interface Config {
   workspace: { cwd: string; allow: string[] };
   tools: string[];
   shell: { defaultTimeoutSec: number; maxTimeoutSec: number };
+  output: { maxLines: number; maxBytes: number };
   auth: { accessTokenTtlSec: number; refreshTokenTtlSec: number; maxFailedLogins: number; lockoutSec: number };
   audit: { enabled: boolean; file: string };
   plugins: PluginEntry[];
@@ -26,6 +24,7 @@ const DEFAULTS = {
   workspace: { cwd: "~", allow: ["~"] },
   tools: ["read"],
   shell: { defaultTimeoutSec: 120, maxTimeoutSec: 600 },
+  output: { maxLines: 2000, maxBytes: 51200 },
   auth: { accessTokenTtlSec: 3600, refreshTokenTtlSec: 30 * 86400, maxFailedLogins: 10, lockoutSec: 900 },
   audit: { enabled: true, file: "audit.log" },
 };
@@ -50,17 +49,14 @@ export function loadConfig(path = defaultConfigPath()): Config {
   const ws = { ...DEFAULTS.workspace, ...raw.workspace };
   const audit = { ...DEFAULTS.audit, ...raw.audit };
 
-  // plugins: { image: { from: ./plugins/image, ...options } } — `false` disables, `true` = defaults.
+  // plugins: { <name>: { from: <npm package | ./path>, ...options } }. `from` is required; `false` = off.
+  // The core does not know any plugin by name.
   const plugins: PluginEntry[] = Object.entries((raw.plugins ?? {}) as Record<string, any>).map(([name, v]) => {
-    const o = v === true || v == null ? {} : v === false ? { enabled: false } : { ...v };
+    const o = v === false ? { enabled: false } : { ...(v ?? {}) };
     const { from, enabled, ...options } = o;
-    const isPath = typeof from === "string" && /^(\.|~|\/|[A-Za-z]:[\\/])/.test(from);
-    return {
-      name,
-      enabled: enabled !== false,
-      from: typeof from !== "string" ? join(REPO_DIR, "plugins", name, "index.ts") : isPath ? expandPath(from, configDir) : from,
-      options,
-    };
+    if (typeof from !== "string" || !from) throw new Error(`plugins.${name}: "from" is required (npm package name or path)`);
+    const isPath = /^(\.|~|\/|[A-Za-z]:[\\/])/.test(from);
+    return { name, enabled: enabled !== false, from: isPath ? expandPath(from, configDir) : from, options };
   });
 
   return {
@@ -70,6 +66,7 @@ export function loadConfig(path = defaultConfigPath()): Config {
     workspace: { cwd: expandPath(String(ws.cwd)), allow: (ws.allow as string[]).map((p) => expandPath(String(p))) },
     tools: Array.isArray(raw.tools) ? raw.tools.map(String) : DEFAULTS.tools,
     shell: { ...DEFAULTS.shell, ...raw.shell },
+    output: { ...DEFAULTS.output, ...raw.output },
     auth: { ...DEFAULTS.auth, ...raw.auth },
     audit: { enabled: audit.enabled !== false, file: expandPath(String(audit.file), dataDir) },
     plugins,
