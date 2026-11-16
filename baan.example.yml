@@ -1,0 +1,43 @@
+# baan config. Copy to ~/.config/baan/baan.yml (Windows: %APPDATA%\baan\baan.yml) or run `baan init`.
+# Env overrides: BAAN_CONFIG, BAAN_DATA_DIR, BAAN_HOST, BAAN_PORT, BAAN_PUBLIC_URL
+
+server:
+  host: 127.0.0.1            # keep loopback; reach it from the internet through a tunnel
+  port: 8790
+  publicUrl: https://mcp.example.com   # the https address your AI app connects to (without /mcp)
+
+workspace:
+  cwd: "~"                   # working directory for the shell tool and relative paths
+  allow:                     # read/write/edit/view_image only work inside these folders
+    - "~"
+
+# Built-in tools (same as pi). Remove a line to turn a tool off.
+# WARNING: bash (PowerShell on Windows) gives whoever logs in full control of this computer,
+# and it is NOT limited by workspace.allow.
+tools:
+  - read
+  # - write
+  # - edit
+  # - bash
+
+shell:
+  defaultTimeoutSec: 120
+  maxTimeoutSec: 600
+
+auth:
+  accessTokenTtlSec: 3600
+  refreshTokenTtlSec: 2592000     # 30 days
+  maxFailedLogins: 10             # then lock the login page for lockoutSec
+  lockoutSec: 900
+
+audit:
+  enabled: true
+  file: audit.log                 # relative to the config folder; one JSON line per tool call
+
+# Plugins. A plugin runs with your full user rights — only add ones you trust.
+#   name: true                      -> ./plugins/<name> from this repo
+#   name: { from: ./path/or/npm-package, ...options }
+#   name: false                     -> installed but off
+plugins:
+  image:
+    maxBytes: 20971520            # 20 MB. Images are never resized; bigger files are refused.
