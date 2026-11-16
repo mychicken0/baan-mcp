@@ -276,3 +276,36 @@ export function trimLog(dataDir: string, maxBytes = 5 * 1024 * 1024): void {
 
 /** Opens the log for appending (for `baan run` started by hand). */
 export const openLog = (dataDir: string) => openSync(logFile(dataDir), "a");
+
+// ── control panel → running baan ─────────────────────────────────────────────
+// The control panel asks a running baan (background or a terminal window) to restart / stop / move to the background
+// by writing one word to <data folder>/baan.control. baan answers in baan.control.done.
+
+export type ControlCommand = "restart" | "stop" | "background";
+export interface ControlDone { cmd: string; ok: boolean; message: string; at: number }
+export const controlFile = (dataDir: string) => join(dataDir, "baan.control");
+const controlDoneFile = (dataDir: string) => join(dataDir, "baan.control.done");
+
+export function sendControl(dataDir: string, cmd: ControlCommand): number {
+  const at = Date.now();
+  rmSync(controlDoneFile(dataDir), { force: true });
+  writeFileSync(controlFile(dataDir), cmd, { mode: 0o600 });
+  return at;
+}
+
+export function writeControlDone(dataDir: string, r: Omit<ControlDone, "at">): void {
+  try { writeFileSync(controlDoneFile(dataDir), JSON.stringify({ ...r, at: Date.now() }), { mode: 0o600 }); } catch { /* ignore */ }
+}
+
+/** Wait for baan's answer to a control command sent at `since`. null = no answer in time. */
+export async function waitControlDone(dataDir: string, since: number, sec: number): Promise<ControlDone | null> {
+  const until = Date.now() + sec * 1000;
+  while (Date.now() < until) {
+    try {
+      const d = JSON.parse(readFileSync(controlDoneFile(dataDir), "utf8")) as ControlDone;
+      if (d.at >= since) return d;
+    } catch { /* not yet */ }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return null;
+}

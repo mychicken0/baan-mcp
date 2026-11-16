@@ -20,6 +20,8 @@
     "stop": "node src/cli.ts stop",
     "status": "node src/cli.ts status",
     "logs": "node src/cli.ts logs",
+    "panel": "node src/cli.ts panel",
+    "app": "node src/cli.ts app",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts"
   },

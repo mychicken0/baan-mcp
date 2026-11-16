@@ -376,6 +376,9 @@ export async function runSetup(configPath: string): Promise<false | "background"
       }
     }
 
+    let launcher = "";
+    try { launcher = (await import("./app.ts")).createLauncher(configPath); } catch { /* shown as npm run app below */ }
+
     const mcpUrl = `${config.server.publicUrl}/mcp`;
     const copied = await copyToClipboard(mcpUrl);
 
@@ -410,6 +413,7 @@ export async function runSetup(configPath: string): Promise<false | "background"
     }
     console.log();
     ui.tip(`Keep this window open while you use it. Next time just run: ${c.bold(c.cyan("npm start"))}`);
+    if (launcher) ui.tip(`Control panel: double-click ${c.bold("baan")} in the baan folder ${c.gray(`(${launcher})`)}`);
     ui.tip(`Change something later? Edit the config and save — baan restarts by itself. ${c.gray("See GUIDE.md")}`);
     ui.rule(c.green);
     return "window";

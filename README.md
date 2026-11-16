@@ -36,7 +36,19 @@ At the end it prints the URL to paste into your AI app (also copied to the clipb
 
 Picked "only while the window is open"? Press **b** in the baan window any time to move it to the background.
 
-**Changing things later:** edit the config (`npm run config`, or press **c** in the baan window) and save. baan checks it and **restarts by itself**. It does the same when a plugin's code changes. If the new config is broken, the old server keeps running and you see the error. This works in the background too. Keys in the baan window: **b** run in background, **r** restart, **c** edit config, **g** guide, **q** quit.
+**Changing things later:** edit the config (`npm run config`, or press **c** in the baan window) and save. baan checks it and **restarts by itself**. It does the same when a plugin's code changes. If the new config is broken, the old server keeps running and you see the error. This works in the background too. Keys in the baan window: **b** run in background, **p** control panel, **r** restart, **c** edit config, **g** guide, **q** quit.
+
+### 🏠 Control panel (an app with buttons)
+Setup puts a **baan** icon with the house logo in the baan folder, made for your OS: `baan.desktop` (Linux), `baan.app` (macOS) or `baan.lnk` (Windows). Double-click it, even when every window is closed, and the control panel opens in its own window:
+
+- status, the URL for your AI app (📋 copy), whether it starts with the computer
+- **Start / Stop / Restart**, and **Run in background** for a baan running in a terminal
+- settings: folder, what the AI may do, plugins, port. Save checks everything first, then baan restarts by itself
+- make a new password, read the log, open the config file or this guide
+
+It also opens with `npm run panel` or key **p** in the baan window. No icon (set up before it existed, or moved the folder)? `npm run app` makes it. You can drag the icon to your desktop, dock or taskbar.
+
+The panel is for this computer only: it listens on `127.0.0.1` on its own port (baan's port + 1), never on the MCP port that Tailscale Funnel / your tunnel exposes, and every request needs a random key that only the icon knows. It closes by itself when its window is closed; closing it never stops baan.
 
 📖 **[GUIDE.md](GUIDE.md)**: change settings, add or remove plugins, write your own plugin, troubleshooting.
 
@@ -49,6 +61,8 @@ Picked "only while the window is open"? Press **b** in the baan window any time 
 | `npm stop` (`baan stop`) | stop the background copy; it no longer starts with the computer |
 | `npm run status` (`baan status`) | running? URL, config and log location |
 | `npm run logs` (`baan logs`) | last lines of the background log |
+| `npm run panel` (`baan panel`) | open the control panel window |
+| `npm run app` (`baan app`) | make the **baan** icon in the baan folder (opens the control panel) |
 | `npm run config` (`baan config`) | open the config file in an editor |
 | `npm run check` (`baan check`) | check the config and load every plugin, without starting |
 | `npm run passwd` (`baan passwd`) | new random password; signs out every connected app |

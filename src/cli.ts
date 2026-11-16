@@ -18,6 +18,8 @@ const HELP = `baan — remote MCP server for your own computer
   baan setup                              guided setup again (folder, tools, Tailscale, background, password)
   baan background                         run in the background and start with the computer (all OSes, no admin)
   baan stop                               stop the background copy; it no longer starts with the computer
+  baan panel [--no-open]                  control panel window: start, stop, restart, settings, password, log
+  baan app                                make the "baan" icon in the baan folder that opens the control panel
   baan status                             is it running? where are the logs?
   baan logs                               last lines of the background log
   baan run                                what the background service runs: auto-restart, no keyboard
@@ -67,6 +69,16 @@ async function status(configPath: string) {
   console.log();
 }
 
+/** Make the baan icon in the baan folder if it is not there yet (people who set up before it existed). */
+async function ensureLauncher(configPath: string): Promise<void> {
+  const { createLauncher, launcherPath } = await import("./app.ts");
+  if (existsSync(launcherPath())) return;
+  try {
+    const f = createLauncher(configPath);
+    ui.ok(`New: a ${c.bold("baan")} icon in the baan folder opens the control panel ${c.gray(`(${f})`)}`);
+  } catch (e) { ui.note(`(Could not make the baan icon: ${(e as Error).message})`); }
+}
+
 async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
@@ -77,6 +89,7 @@ async function main() {
       tools: { type: "string" },
       "password-file": { type: "string" },
       force: { type: "boolean" },
+      "no-open": { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -94,8 +107,21 @@ async function main() {
     }
     return;
   }
+  if (cmd === "panel") {
+    const { runPanel } = await import("./panel.ts");
+    await runPanel(configPath, { open: !values["no-open"] });
+    return;
+  }
+  if (cmd === "app") {
+    const { createLauncher } = await import("./app.ts");
+    const f = createLauncher(configPath);
+    ui.ok(`Made ${c.bold(f)}`);
+    ui.tip("Double-click it to open the baan control panel. You can also drag it to your desktop or dock / taskbar.");
+    return;
+  }
   if (cmd === "start") {
     loadConfig(configPath); // fail early with a clear message
+    await ensureLauncher(configPath);
     const service = await import("./service.ts");
     if (service.installed()) {
       // Already set to run in the background: make sure it runs, show where things are, and let the window go.

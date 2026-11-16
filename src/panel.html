@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>baan</title>
+<link rel="icon" href="/logo.svg">
+<style>
+  :root {
+    --brand: #b14423; --brand-soft: #f6e4dd; --bg: #f5f2f0; --card: #ffffff; --text: #1e1b1a; --muted: #6e6662;
+    --line: #e7e0dc; --ok: #1d8a4b; --ok-soft: #e1f3e8; --bad: #c0392b; --bad-soft: #fbe5e2; --warn: #9a6200; --warn-soft: #fdf1d8;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --brand: #e0663d; --brand-soft: #3a2219; --bg: #161413; --card: #201d1c; --text: #eee9e6; --muted: #a39b96;
+      --line: #35302d; --ok: #4cc27f; --ok-soft: #173223; --bad: #ef6f62; --bad-soft: #3a1c19; --warn: #e5b24d; --warn-soft: #362a12;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Thai", sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px;
+    padding: 14px 24px; background: var(--card); border-bottom: 1px solid var(--line); }
+  header img { width: 38px; height: 38px; }
+  header h1 { margin: 0; font-size: 24px; font-weight: 800; color: var(--brand); letter-spacing: .3px; }
+  header .sub { color: var(--muted); font-size: 13px; margin-top: -2px; }
+  .pill { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px;
+    font-weight: 700; background: var(--line); color: var(--muted); white-space: nowrap; }
+  .pill .dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
+  .pill.on { background: var(--ok-soft); color: var(--ok); }
+  .pill.on .dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 22%, transparent); }
+  .pill.off { background: var(--bad-soft); color: var(--bad); }
+  .pill.busy { background: var(--warn-soft); color: var(--warn); }
+  main { max-width: 860px; margin: 0 auto; padding: 18px 24px 48px; display: grid; gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  .card h2 { margin: 0 0 12px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .hint { margin-left: auto; font-weight: 400; font-size: 13px; color: var(--muted); }
+  .rows { display: grid; grid-template-columns: 190px 1fr; gap: 8px 14px; align-items: center; }
+  .rows .k { color: var(--muted); }
+  .rows .v { min-width: 0; overflow-wrap: anywhere; }
+  code, pre, input.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 13.5px; }
+  .url { display: flex; gap: 8px; align-items: center; }
+  .url code { background: var(--brand-soft); color: var(--brand); padding: 4px 8px; border-radius: 6px; font-weight: 700; overflow-wrap: anywhere; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+  button { font: inherit; font-weight: 650; cursor: pointer; padding: 9px 16px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  button:hover:not(:disabled) { border-color: var(--brand); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  button.danger { color: var(--bad); }
+  button.small { padding: 4px 10px; font-size: 13px; border-radius: 8px; }
+  .msg { display: none; white-space: pre-wrap; padding: 10px 14px; border-radius: 10px; margin-top: 14px; overflow-wrap: anywhere; }
+  .msg.ok { display: block; background: var(--ok-soft); color: var(--ok); }
+  .msg.err { display: block; background: var(--bad-soft); color: var(--bad); }
+  .msg.info { display: block; background: var(--warn-soft); color: var(--warn); }
+  label.field { display: block; margin: 0 0 14px; }
+  label.field > span { display: block; font-weight: 650; margin-bottom: 4px; }
+  label.field small, .small-note { color: var(--muted); font-size: 13px; }
+  input[type=text], input[type=number] { width: 100%; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); font: inherit; }
+  input[type=number] { width: 140px; }
+  input:focus { outline: 2px solid color-mix(in srgb, var(--brand) 45%, transparent); border-color: var(--brand); }
+  .tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 6px; }
+  .check { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+  .check input { margin-top: 4px; accent-color: var(--brand); width: 16px; height: 16px; }
+  .check b { display: block; }
+  .check small { color: var(--muted); }
+  .check.risky b { color: var(--bad); }
+  .warnbox { display: none; margin: 8px 0 14px; padding: 10px 14px; border-radius: 10px; background: var(--bad-soft); color: var(--bad); font-size: 14px; }
+  .warnbox.show { display: block; }
+  .pw { display: none; margin-top: 14px; padding: 14px; border-radius: 10px; background: var(--warn-soft); }
+  .pw.show { display: block; }
+  .pw code { font-size: 18px; font-weight: 800; color: var(--warn); overflow-wrap: anywhere; }
+  details summary { cursor: pointer; font-weight: 700; font-size: 16px; }
+  pre.log { margin: 12px 0 0; max-height: 360px; overflow: auto; padding: 12px; border-radius: 10px; background: var(--bg);
+    border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12.5px; }
+  footer { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  footer .small-note { margin-left: auto; }
+  #gone { display: none; position: fixed; inset: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 92%, transparent);
+    align-items: center; justify-content: center; text-align: center; padding: 24px; }
+  #gone.show { display: flex; }
+  #gone div { max-width: 460px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
+  @media (max-width: 620px) { .rows { grid-template-columns: 1fr; gap: 2px 0; } .rows .k { margin-top: 8px; } }
+</style>
+</head>
+<body>
+<header>
+  <img src="/logo.svg" alt="">
+  <div><h1>baan</h1><div class="sub">control panel · this computer only</div></div>
+  <span class="pill" id="pill"><span class="dot"></span><span id="pillText">Checking…</span></span>
+</header>
+
+<main>
+  <section class="card">
+    <h2>🏠 Status <span class="hint" id="modeHint"></span></h2>
+    <div class="rows">
+      <div class="k">URL for your AI app</div>
+      <div class="v url"><code id="mcpUrl">…</code><button class="small" id="copyUrl">📋 Copy</button></div>
+      <div class="k">On this computer</div><div class="v"><code id="local">…</code></div>
+      <div class="k">Starts with computer</div><div class="v" id="startsWith">…</div>
+      <div class="k">Folder</div><div class="v"><code id="folder">…</code></div>
+      <div class="k">Tools</div><div class="v" id="tools">…</div>
+    </div>
+    <div class="btns">
+      <button class="primary" id="btnStart">▶ Start</button>
+      <button id="btnRestart">🔄 Restart</button>
+      <button id="btnBackground">🚀 Run in background</button>
+      <button class="danger" id="btnStop">■ Stop</button>
+    </div>
+    <div class="msg" id="msg"></div>
+  </section>
+
+  <section class="card">
+    <h2>⚙️ Settings <span class="hint">Save checks everything first, then baan restarts by itself</span></h2>
+    <label class="field"><span>📁 Folder</span>
+      <input type="text" class="mono" id="sFolder" spellcheck="false">
+      <small>The AI reads and writes files only inside this folder.</small></label>
+    <div class="field"><span style="font-weight:650">🧰 What the AI may do</span></div>
+    <div class="tools" id="sTools"></div>
+    <div class="warnbox" id="bashWarn">🚨 <b>Run commands</b> gives whoever signs in full control of this computer, and it is <b>not</b> limited to the folder above. Keep your password safe.</div>
+    <div id="sPluginsWrap" style="display:none">
+      <div class="field" style="margin-top:12px"><span style="font-weight:650">🔌 Plugins</span></div>
+      <div class="tools" id="sPlugins"></div>
+    </div>
+    <label class="field" style="margin-top:14px"><span>🔢 Port</span>
+      <input type="number" id="sPort" min="1024" max="65535">
+      <small id="portNote">Only change it if another program needs this port.</small></label>
+    <div class="btns"><button class="primary" id="btnSave">💾 Save</button><button id="btnReload">Undo changes</button></div>
+    <div class="msg" id="sMsg"></div>
+  </section>
+
+  <section class="card">
+    <h2>🔑 Password</h2>
+    <div class="small-note">Make a new password if someone else may know it. Every connected AI app has to sign in again with the new one.</div>
+    <div class="btns"><button id="btnPw">🔑 Make a new password</button></div>
+    <div class="pw" id="pwBox">
+      <div class="url"><code id="pwText"></code><button class="small" id="copyPw">📋 Copy</button></div>
+      <div class="small-note" style="margin-top:6px">🚨 Shown only once — save it in your password manager now.</div>
+    </div>
+    <div class="msg" id="pwMsg"></div>
+  </section>
+
+  <section class="card">
+    <details id="logs">
+      <summary>📖 Log</summary>
+      <div class="btns" style="margin-top:10px"><button class="small" id="btnLogs">Refresh</button><button class="small" id="btnOpenLog">Open log file</button></div>
+      <pre class="log" id="logText"></pre>
+    </details>
+  </section>
+
+  <footer>
+    <button id="btnConfig">📝 Edit config file</button>
+    <button id="btnGuide">📖 Guide</button>
+    <span class="small-note" id="cfgPath"></span>
+  </footer>
+</main>
+
+<div id="gone"><div>
+  <h2 style="margin-top:0">This window is closed</h2>
+  <p id="goneText">The control panel stopped. Close this window and open <b>baan</b> again from its icon in the baan folder.</p>
+</div></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const KEY = (() => {
+  const k = new URLSearchParams(location.hash.slice(1)).get("k");
+  if (k) { sessionStorage.setItem("baan-key", k); history.replaceState(null, "", location.pathname); }
+  return sessionStorage.getItem("baan-key") || "";
+})();
+const TOOL_INFO = {
+  read: ["👀 Read files", "Look at files"],
+  write: ["📝 Create files", "Make and overwrite files"],
+  edit: ["✏️ Edit files", "Change parts of files"],
+  bash: ["⚡ Run commands", "Anything on this computer"],
+};
+let busy = false;
+let last = null;
+
+async function api(path, body) {
+  let r;
+  try {
+    r = await fetch("/api/" + path, {
+      method: body === undefined ? "GET" : "POST",
+      headers: body === undefined ? { "x-baan-key": KEY } : { "x-baan-key": KEY, "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (e) { showGone(); throw new Error("The control panel is not running."); }
+  const j = await r.json().catch(() => ({ ok: false, error: "HTTP " + r.status }));
+  if (r.status === 401) showGone(j.error);
+  if (!r.ok || j.ok === false) throw new Error(j.error || "HTTP " + r.status);
+  return j;
+}
+function showGone(text) { if (text) $("goneText").textContent = text; $("gone").classList.add("show"); }
+function say(el, kind, text) { const m = $(el); m.className = "msg " + kind; m.textContent = text; }
+function clear(el) { $(el).className = "msg"; $(el).textContent = ""; }
+async function copy(text, btn) {
+  try { await navigator.clipboard.writeText(text); } catch { const t = document.createElement("textarea"); t.value = text; document.body.append(t); t.select(); document.execCommand("copy"); t.remove(); }
+  const old = btn.textContent; btn.textContent = "✅ Copied"; setTimeout(() => (btn.textContent = old), 1500);
+}
+
+function render(s) {
+  last = s;
+  const pill = $("pill");
+  if (busy) { /* keep the busy text */ }
+  else if (s.running) { pill.className = "pill on"; $("pillText").textContent = s.mode === "window" ? "Running (in a terminal)" : "Running"; }
+  else { pill.className = "pill off"; $("pillText").textContent = "Stopped"; }
+  $("modeHint").textContent = s.mode === "background" ? "in the background" : s.mode === "window" ? "in a terminal window — closing it stops baan" : "";
+  $("mcpUrl").textContent = s.mcpUrl || "—";
+  $("local").textContent = s.local || "—";
+  $("startsWith").textContent = s.startsWithComputer === "boot" ? "✅ Yes, when the computer starts" + (s.kindText ? " (" + s.kindText + ")" : "")
+    : s.startsWithComputer === "login" ? "✅ Yes, when you log in" + (s.kindText ? " (" + s.kindText + ")" : "")
+    : "No — press Start to run it in the background and start with the computer";
+  $("folder").textContent = s.folder || "—";
+  $("tools").textContent = (s.tools || []).join(", ") + (s.plugins && s.plugins.length ? "   ·   plugins: " + s.plugins.join(", ") : "");
+  $("cfgPath").textContent = s.configPath;
+  $("btnStart").style.display = s.running ? "none" : "";
+  $("btnStop").style.display = s.running ? "" : "none";
+  $("btnRestart").style.display = s.running ? "" : "none";
+  $("btnBackground").style.display = s.mode === "window" ? "" : "none";
+  for (const id of ["btnStart", "btnStop", "btnRestart", "btnBackground"]) $(id).disabled = busy;
+  if (s.configError && !busy) say("msg", "err", "The config file has a problem:\n" + s.configError + "\n\nPress “Edit config file” below to fix it.");
+}
+
+async function refresh() { try { render(await api("status")); } catch { /* shown by api() */ } }
+
+async function action(path, label, confirmText) {
+  if (busy) return;
+  if (confirmText && !confirm(confirmText)) return;
+  busy = true; clear("msg");
+  $("pill").className = "pill busy"; $("pillText").textContent = label;
+  if (last) render(last);
+  try {
+    const r = await api(path, {});
+    say("msg", "ok", "✅ " + r.message);
+  } catch (e) { say("msg", "err", "❌ " + e.message); }
+  busy = false;
+  await refresh();
+}
+
+// ── settings ──
+let loaded = null;
+function check(id, title, sub, checked, risky) {
+  const l = document.createElement("label");
+  l.className = "check" + (risky ? " risky" : "");
+  const i = document.createElement("input"); i.type = "checkbox"; i.id = id; i.checked = checked;
+  const d = document.createElement("div");
+  const b = document.createElement("b"); b.textContent = title;
+  const s = document.createElement("small"); s.textContent = sub;
+  d.append(b, s); l.append(i, d);
+  return l;
+}
+async function loadSettings() {
+  try {
+    const s = await api("settings");
+    loaded = s;
+    $("sFolder").value = s.folder;
+    const t = $("sTools"); t.textContent = "";
+    for (const name of s.builtin) {
+      const [title, sub] = TOOL_INFO[name];
+      t.append(check("tool-" + name, name === "bash" ? title + " (" + s.shellName + ")" : title, sub, s.tools.includes(name), name === "bash"));
+    }
+    $("tool-bash").addEventListener("change", bashWarn);
+    bashWarn();
+    const p = $("sPlugins"); p.textContent = "";
+    for (const pl of s.plugins) {
+      const el = check("plugin-" + pl.name, pl.name, pl.canToggle ? "plugin" : "off in the config file", pl.enabled, false);
+      if (!pl.canToggle) el.querySelector("input").disabled = true;
+      p.append(el);
+    }
+    $("sPluginsWrap").style.display = s.plugins.length ? "" : "none";
+    $("sPort").value = s.port;
+    $("portNote").textContent = /\.ts\.net/.test(s.publicUrl)
+      ? "Only change it if another program needs this port. Tailscale then has to point at the new port too (shown after Save)."
+      : "Only change it if another program needs this port.";
+  } catch (e) { say("sMsg", "err", "❌ " + e.message); }
+}
+function bashWarn() { $("bashWarn").classList.toggle("show", $("tool-bash").checked); }
+async function saveSettings() {
+  if (!loaded) return;
+  const tools = loaded.builtin.filter((n) => $("tool-" + n).checked);
+  const plugins = {};
+  for (const pl of loaded.plugins) if (pl.canToggle) plugins[pl.name] = $("plugin-" + pl.name).checked;
+  const body = { folder: $("sFolder").value.trim(), tools, plugins, port: Number($("sPort").value) };
+  if (tools.includes("bash") && !loaded.tools.includes("bash") &&
+      !confirm("Turn on “Run commands”?\n\nWhoever signs in to baan can then do anything on this computer, not only in the folder.")) return;
+  $("btnSave").disabled = true; say("sMsg", "info", "⏳ Checking the new settings…");
+  try {
+    const r = await api("settings", body);
+    say("sMsg", "ok", "✅ " + r.message + (r.notes && r.notes.length ? "\n\n👉 " + r.notes.join("\n👉 ") : ""));
+    await loadSettings();
+    setTimeout(refresh, 2500);
+  } catch (e) { say("sMsg", "err", "❌ " + e.message); }
+  $("btnSave").disabled = false;
+}
+
+// ── logs ──
+async function loadLogs() {
+  try {
+    const r = await api("logs");
+    $("logText").textContent = r.text || (r.background ? "(the log is empty)" : "No background log yet. When baan runs in a terminal window, its messages are in that window.");
+    $("logText").scrollTop = $("logText").scrollHeight;
+  } catch (e) { $("logText").textContent = e.message; }
+}
+
+// ── wire up ──
+$("btnStart").onclick = () => action("start", "Starting…");
+$("btnStop").onclick = () => action("stop", "Stopping…", "Stop baan?\n\nAI apps cannot use this computer until you press Start again. It will also no longer start with the computer.");
+$("btnRestart").onclick = () => action("restart", "Restarting…");
+$("btnBackground").onclick = () => action("background", "Moving…");
+$("copyUrl").onclick = (e) => last && last.mcpUrl && copy(last.mcpUrl, e.currentTarget);
+$("btnSave").onclick = saveSettings;
+$("btnReload").onclick = () => { clear("sMsg"); loadSettings(); };
+$("btnPw").onclick = async () => {
+  if (!confirm("Make a new password?\n\nEvery connected AI app has to sign in again with the new one.")) return;
+  clear("pwMsg");
+  try {
+    const r = await api("password", {});
+    $("pwText").textContent = r.password; $("pwBox").classList.add("show");
+    say("pwMsg", "ok", "✅ " + r.message);
+  } catch (e) { say("pwMsg", "err", "❌ " + e.message); }
+};
+$("copyPw").onclick = (e) => copy($("pwText").textContent, e.currentTarget);
+$("logs").addEventListener("toggle", () => { if ($("logs").open) loadLogs(); });
+$("btnLogs").onclick = loadLogs;
+const openFile = (what) => api("open", { what }).catch((e) => say("msg", "err", "❌ " + e.message));
+$("btnOpenLog").onclick = () => openFile("log");
+$("btnConfig").onclick = () => openFile("config");
+$("btnGuide").onclick = () => openFile("guide");
+
+addEventListener("pagehide", () => navigator.sendBeacon("/api/bye?k=" + encodeURIComponent(KEY)));
+addEventListener("focus", refresh);
+if (!KEY) showGone("This window has no access. Open baan from its icon in the baan folder.");
+else {
+  refresh(); loadSettings();
+  setInterval(() => { if (!busy) refresh(); if ($("logs").open && !document.hidden) loadLogs(); }, 3000);
+}
+</script>
+</body>
+</html>

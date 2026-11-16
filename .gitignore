@@ -3,3 +3,9 @@ baan.yml
 state.json
 audit.log
 *.tmp
+baan.log
+panel.json
+# the baan icon is made for each computer (npm run app)
+baan.desktop
+baan.lnk
+baan.app/

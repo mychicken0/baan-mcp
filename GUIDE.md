@@ -2,6 +2,27 @@
 
 How to change settings, add plugins and build new things once baan is set up.
 
+## Control panel
+
+Double-click **baan** in the baan folder (`baan.desktop` on Linux, `baan.app` on macOS, `baan.lnk` on Windows). Or `npm run panel`, or press **p** in the baan window. It opens in its own window (Chrome / Edge / Brave app window if you have one, otherwise your normal browser).
+
+| Button | What it does |
+|---|---|
+| ▶ Start | runs baan in the background and turns on "start with the computer" (same as `npm run background`) |
+| ■ Stop | stops it; it no longer starts with the computer (same as `npm stop`). A baan in a terminal window quits |
+| 🔄 Restart | checks the setup, then restarts. If the setup is broken, the old one keeps running and you see why |
+| 🚀 Run in background | only for a baan running in a terminal: same as pressing **b** there |
+| 💾 Save (settings) | writes `baan.yml` only after the new settings pass `baan check`; baan then restarts by itself |
+| 🔑 Make a new password | shown once; every connected AI app must sign in again |
+
+Things the panel does not have (plugin options, output limits, login timeouts…): **📝 Edit config file**.
+
+Changing the **port** there? If you use Tailscale Funnel, point it at the new port; the panel prints the exact `tailscale funnel` command after Save.
+
+Linux file managers (Nemo, GNOME Files) may ask once whether to trust the launcher: choose *Trust and launch* / *Mark as trusted*. Moved the baan folder or installed a new Node.js? Run `npm run app` to make the icon again.
+
+The panel only listens on `127.0.0.1` (port = baan's port + 1). It is never reachable from the internet, and it needs a random key that is written next to the config (`panel.json`, only you can read it).
+
 ## Background and start with the computer
 
 Setup's recommended choice runs baan **in the background and starts it with the computer**, so you can close the window. If you picked "only while this window is open", press **b** in the baan window (or run `npm run background`) to switch.
@@ -240,6 +261,8 @@ On Windows, emoji show in **Windows Terminal** and VS Code. The old blue "Comman
 | `already running in another window` | baan runs somewhere else. Go to that window, or close it first. |
 | `address already in use` | Another program uses `server.port`. Change the port and update your tunnel, or stop the other program. |
 | The AI app asks you to sign in again | The password changed, or `publicUrl` changed. Sign in again. |
+| Double-clicking **baan** does nothing | Run `npm run app` in the baan folder (after moving the folder or a new Node.js). On Linux, allow the launcher when the file manager asks. `npm run panel` always works. |
+| Panel says "This window is closed" | It closed itself after its window was idle. Close the window and double-click **baan** again. |
 | The AI app can't reach baan | Open your public URL in a browser. It should say `baan MCP server`. With Tailscale, check `tailscale funnel status`. |
 
 Every tool call is in `audit.log`, next to `baan.yml`.

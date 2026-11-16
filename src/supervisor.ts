@@ -7,6 +7,8 @@
 // (YAML typo, plugin that won't load), the running server keeps going and the error is shown.
 // Background mode (`baan run`, used by the start-with-computer service) is the same without the keyboard,
 // writes a pid file, and also brings the server back by itself if it crashes.
+// Both modes also take orders from the control panel (restart / stop / move to the background) through
+// <data folder>/baan.control, and answer in baan.control.done.
 import { spawn, type ChildProcess } from "node:child_process";
 import { watch, readFileSync, existsSync, statSync, writeFileSync, rmSync, mkdirSync, type FSWatcher } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -17,6 +19,7 @@ import { openInEditor, stopProcessTree } from "./platform.ts";
 import * as ui from "./ui.ts";
 import { c } from "./ui.ts";
 import * as service from "./service.ts";
+import { ROOT } from "./app.ts";
 
 const CLI = fileURLToPath(new URL("./cli.ts", import.meta.url));
 const SRC_DIR = fileURLToPath(new URL(".", import.meta.url));
@@ -132,6 +135,9 @@ export async function supervise(configPath: string, opts: { quietFirst?: boolean
     // `npm run passwd` in another window: restart so the running server uses the new password.
     const pwFilter = (f: string | null) => (f === null || f === "state.json") && passwordOf(dataDir) !== password;
     if (existsSync(dataDir)) add(dataDir, false, "Password changed", pwFilter);
+    // Orders from the control panel.
+    const ctl = basename(service.controlFile(dataDir));
+    try { if (existsSync(dataDir)) watchers.push(watch(dataDir, (_e, f) => { if (f == null || String(f) === ctl) void onControl(); })); } catch { /* ignore */ }
     add(SRC_DIR, true, "baan code changed", (f) => f === null || /\.(ts|js|mjs)$/.test(f));
     for (const w of pluginWatches(configPath)) {
       const why = `Plugin "${w.name}" changed`;
@@ -140,16 +146,17 @@ export async function supervise(configPath: string, opts: { quietFirst?: boolean
     }
   };
 
-  const restart = async (why: string, force = false): Promise<void> => {
-    if (busy) { if (!pending || force) pending = { why, force }; return; }
+  /** true = restarted, false = the new setup is broken (old one keeps running), undefined = nothing to do / queued. */
+  const restart = async (why: string, force = false): Promise<boolean | undefined> => {
+    if (busy) { if (!pending || force) pending = { why, force }; return undefined; }
     if (why === "Config saved" && !force) {
       const h = hashFile(configPath);
-      if (h === configHash) return; // touched, not changed
+      if (h === configHash) return undefined; // touched, not changed
       configHash = h;
     }
     if (why === "Password changed") {
       const pw = passwordOf(dataDir);
-      if (pw === password) return;
+      if (pw === password) return undefined;
       password = pw;
     }
     busy = true;
@@ -162,17 +169,41 @@ export async function supervise(configPath: string, opts: { quietFirst?: boolean
         console.error(ui.passthrough(r.out) + "\n");
         ui.tip(child ? "The server keeps running with the old setup. Fix it and save again." : "Fix it and save again.");
         if (bg && !child) retryLater();
-        return;
+        return false;
       }
       if (child) { const old = child; child = null; await stopProcessTree(old); }
       configHash = hashFile(configPath);
       start(true);
       rewatch();
       password = passwordOf(dataDir);
+      return true;
     } finally {
       busy = false;
       if (pending) { const p = pending; pending = null; void restart(p.why, p.force); }
     }
+  };
+
+  let controlBusy = false;
+  const onControl = async () => {
+    if (controlBusy || quitting) return;
+    const f = service.controlFile(dataDir);
+    let cmd = "";
+    try { cmd = readFileSync(f, "utf8").trim(); } catch { return; }
+    rmSync(f, { force: true });
+    controlBusy = true;
+    const done = (ok: boolean, message: string) => service.writeControlDone(dataDir, { cmd, ok, message });
+    try {
+      if (cmd === "restart") {
+        const r = await restart("Restart (control panel)", true);
+        done(r !== false, r === false ? "Not restarted: the setup has a problem, so the old one keeps running. Look at the log." : r ? "Restarted." : "Restart queued.");
+      } else if (cmd === "stop") {
+        done(true, "Stopping.");
+        await quit();
+      } else if (cmd === "background" && !bg) {
+        done(true, "Moving to the background.");
+        await toBackground();
+      } else done(false, `Unknown order: ${cmd}`);
+    } finally { controlBusy = false; }
   };
 
   const quit = async () => {
@@ -218,7 +249,7 @@ export async function supervise(configPath: string, opts: { quietFirst?: boolean
 
   const help = () => {
     console.log();
-    ui.say(`${ui.key("b", "run in background")}   ${ui.key("r", "restart")}   ${ui.key("c", "edit config")}   ${ui.key("g", "guide")}   ${ui.key("q", "quit")}`);
+    ui.say(`${ui.key("b", "run in background")}   ${ui.key("p", "control panel")}   ${ui.key("r", "restart")}   ${ui.key("c", "edit config")}   ${ui.key("g", "guide")}   ${ui.key("q", "quit")}`);
     ui.tip(`Press ${c.bold("b")} to keep baan running after you close this window ${c.gray("(and start it with the computer)")}.`);
     ui.tip(`Save ${c.bold(basename(configPath))} and baan restarts by itself.`);
     console.log();
@@ -248,6 +279,12 @@ export async function supervise(configPath: string, opts: { quietFirst?: boolean
       if (k === "\x03" || k === "q") return void quit();
       if (k === "r") return void restart("Restart (r)", true);
       if (k === "b") return void toBackground();
+      if (k === "p") {
+        console.log();
+        ui.say(`${ui.icon("home")}Opening the control panel… ${c.gray("(or double-click baan in the baan folder)")}`);
+        spawn(process.execPath, [...process.execArgv, CLI, "panel", "--config", configPath], { stdio: "ignore", detached: true, windowsHide: true }).unref();
+        return;
+      }
       if (k === "g") {
         console.log();
         ui.say(`${ui.icon("book")}Guide: ${c.bold(c.cyan(GUIDE))}`);
@@ -280,6 +317,7 @@ export function printBackground(r: service.EnableResult, configPath: string, dat
     ["gear", "Status", "npm run status"],
     ["book", "Logs", `npm run logs   ${c.gray(service.logFile(dataDir))}`],
     ["stop", "Stop", `npm stop   ${c.gray("(stops it and no longer starts with the computer)")}`],
+    ["home", "Control panel", `double-click ${c.bold("baan")} in ${ROOT}   ${c.gray("(or npm run panel)")}`],
   ]);
   console.log();
 }
