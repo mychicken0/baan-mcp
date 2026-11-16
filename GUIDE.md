@@ -226,7 +226,25 @@ Other things to know:
 - Two tools can't have the same name. baan refuses to start and tells you which one.
 - `options` is everything in the plugin's block except `from`. Read your settings from there, not from constants in the code.
 - `platform.isWindows` is passed in too, if a tool needs to behave differently on Windows.
-- The bundled `plugins/image` is a complete real example.
+- The bundled `plugins/image` is a complete real example of the next section.
+
+### Extend `read` instead of adding a tool
+Every new tool shows up in the AI app as something new to approve (Gemini asks for each tool). If your plugin is about **reading a kind of file**, add a `read` handler instead. The tool list stays read / write / edit / bash, so nothing new to approve:
+
+```ts
+const plugin: PluginFactory = () => ({
+  name: "csv",
+  async read(file, ctx) {
+    if (!file.endsWith(".csv")) return null;      // not mine: the next plugin, then the normal text reader, gets it
+    return "…";                                   // a string, or [{ type: "text" … }, { type: "image" … }]
+  },
+});
+```
+
+- `file` is already resolved and checked against `workspace.allow`, and it is an existing file.
+- Return `null` to pass. Throw to show the AI an error. The first plugin that returns something wins.
+- `offset`/`limit` are not passed; they only apply to plain text.
+- If `read` is turned off in `tools:`, read handlers do nothing.
 
 ## Update baan
 ```sh

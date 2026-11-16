@@ -1,7 +1,7 @@
 {
   "name": "baan-plugin-image",
   "version": "0.1.0",
-  "description": "baan plugin: view_image, sends images at original resolution (never resized)",
+  "description": "baan plugin: the read tool returns images at original resolution (never resized)",
   "type": "module",
   "license": "MIT",
   "main": "./index.ts",

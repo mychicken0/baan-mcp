@@ -1,6 +1,7 @@
-// image plugin: view_image returns the ORIGINAL file bytes. No resizing, no re-encoding, no quality loss.
-// If a file is bigger than maxBytes it is refused (never shrunk), so what the model gets is always the real pixels.
-import { readFile, stat } from "node:fs/promises";
+// image plugin: lets the built-in `read` tool return images (PNG, JPEG, GIF, WebP) as the ORIGINAL file bytes.
+// No resizing, no re-encoding, no quality loss. It adds no tool of its own, so turning it on/off doesn't change
+// the AI app's tool list. A file bigger than maxBytes is refused (never shrunk), so the model always gets the real pixels.
+import { open, readFile } from "node:fs/promises";
 import type { PluginFactory } from "../../src/plugin.ts";
 
 type Kind = { mime: string; size?: [number, number] };
@@ -30,39 +31,38 @@ function sniff(b: Buffer): Kind | null {
   return null;
 }
 
-const plugin: PluginFactory = ({ z, options }) => {
+const plugin: PluginFactory = ({ options }) => {
   const maxBytes = Number(options.maxBytes ?? 20 * 1024 * 1024);
   return {
     name: "image",
-    tools: [
-      {
-        name: "view_image",
-        title: "View image",
-        description:
-          "Show an image file (PNG, JPEG, GIF, WebP) at its original resolution and quality. The file is sent unchanged — never resized or recompressed.",
-        input: { path: z.string().describe("Image file path (absolute, ~/..., or relative to the working directory)") },
-        readOnly: true,
-        async run({ path }, ctx) {
-          const file = ctx.resolvePath(path);
-          const st = await stat(file);
-          if (!st.isFile()) throw new Error(`Not a file: ${file}`);
-          if (st.size > maxBytes) {
-            throw new Error(
-              `${file} is ${(st.size / 1048576).toFixed(1)} MB, over the image plugin limit of ${(maxBytes / 1048576).toFixed(1)} MB. ` +
-              `It is not resized on purpose. Raise plugins.image.maxBytes in baan.yml, or crop the image first.`,
-            );
-          }
-          const data = await readFile(file);
-          const kind = sniff(data);
-          if (!kind) throw new Error(`${file} is not a PNG, JPEG, GIF or WebP image`);
-          const dims = kind.size ? `${kind.size[0]}x${kind.size[1]} px, ` : "";
-          return [
-            { type: "text", text: `${file} (${dims}${(data.length / 1024).toFixed(0)} KB, ${kind.mime}, original — not resized)` },
-            { type: "image", data: data.toString("base64"), mimeType: kind.mime },
-          ];
-        },
-      },
-    ],
+    async read(file) {
+      // Look at the first bytes only; anything that isn't an image goes on to the text reader.
+      const fh = await open(file, "r");
+      let head: Buffer, size: number;
+      try {
+        size = (await fh.stat()).size;
+        const buf = Buffer.alloc(64);
+        const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+        head = buf.subarray(0, bytesRead);
+      } finally {
+        await fh.close();
+      }
+      if (!sniff(head)) return null;
+      if (size > maxBytes) {
+        throw new Error(
+          `${file} is ${(size / 1048576).toFixed(1)} MB, over the image plugin limit of ${(maxBytes / 1048576).toFixed(1)} MB. ` +
+          `It is not resized on purpose. Raise plugins.image.maxBytes in baan.yml, or crop the image first.`,
+        );
+      }
+      const data = await readFile(file);
+      const kind = sniff(data);
+      if (!kind) return null;
+      const dims = kind.size ? `${kind.size[0]}x${kind.size[1]} px, ` : "";
+      return [
+        { type: "text", text: `${file} (${dims}${(data.length / 1024).toFixed(0)} KB, ${kind.mime}, original — not resized)` },
+        { type: "image", data: data.toString("base64"), mimeType: kind.mime },
+      ];
+    },
   };
 };
 

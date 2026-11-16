@@ -37,9 +37,19 @@ export interface ToolDef {
   run(args: any, ctx: ToolContext): Promise<string | ToolContent[]>;
 }
 
+/**
+ * Adds a file type to the built-in `read` tool instead of adding a new tool, so the AI app's
+ * tool list (and its approvals) stay the same when the plugin is turned on or off.
+ * Gets the resolved, allowed path of an existing file. Return null/undefined to pass the file
+ * on (to the next plugin, then to the plain text reader). Throw to show the AI an error.
+ */
+export type ReadHandler = (file: string, ctx: ToolContext) => Promise<string | ToolContent[] | null | undefined>;
+
 export interface Plugin {
   name: string;
   tools?: ToolDef[];
+  /** Extend the built-in read tool (see ReadHandler). Prefer this over a new tool when it fits. */
+  read?: ReadHandler;
 }
 
 export interface PluginApi {

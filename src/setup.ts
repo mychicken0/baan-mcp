@@ -294,7 +294,7 @@ export async function runSetup(configPath: string): Promise<false | "background"
     }
     console.log();
     const image = await w.yes(`${ui.icon("picture")}Let the AI look at pictures? ${c.gray("(PNG/JPEG/GIF/WebP, full quality)")}`, true);
-    ui.ok(`Tools: ${tools.map((t) => (t === "bash" ? SHELL_TOOL_NAME : t)).join(", ")}${image ? ", view_image" : ""}`);
+    ui.ok(`Tools: ${tools.map((t) => (t === "bash" ? SHELL_TOOL_NAME : t)).join(", ")}${image ? " (read also shows images)" : ""}`);
 
     ui.step(3, TOTAL, "globe", "Reach it from the internet");
     const how = await w.choose(`Gemini / Claude / ChatGPT run on the internet, so baan needs an ${c.bold("https")} address:`, [
@@ -400,7 +400,7 @@ export async function runSetup(configPath: string): Promise<false | "background"
     console.log();
     ui.rows([
       ["folder", "Folder", folder],
-      ["tools", "Tools", tools.map((t) => (t === "bash" ? SHELL_TOOL_NAME : t)).join(", ") + (image ? ", view_image" : "")],
+      ["tools", "Tools", tools.map((t) => (t === "bash" ? SHELL_TOOL_NAME : t)).join(", ") + (image ? " (read also shows images)" : "")],
       ["gear", "Config", configPath],
     ]);
     if (bgResult) {

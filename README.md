@@ -3,7 +3,7 @@
 **baan** lets AI apps like Gemini, Claude or ChatGPT use tools on **your own computer** over the internet, with a login page built in. One codebase for Linux, macOS and Windows.
 
 - **4 built-in tools, same as [pi](https://github.com/earendil-works/pi):** `read`, `write`, `edit`, `bash` (`powershell` on Windows). Each can be turned off.
-- **Everything else is a plugin.** The repo ships one: `image` → `view_image`, which sends pictures at **original resolution, never resized or recompressed**.
+- **Everything else is a plugin.** The repo ships one: `image`, which lets `read` send pictures at **original resolution, never resized or recompressed**. It adds no new tool, so the AI app's tool list (and its approvals) doesn't change.
 - **Built-in login.** Standard MCP OAuth (dynamic client registration + PKCE) with a password page served by baan itself. No Google Cloud project, no GitHub app.
 - **Survives restarts.** Stateless MCP + tokens saved to disk, so restarting baan doesn't disconnect your AI app.
 - **No hardcoded values.** Everything is in `baan.yml` or env vars.
@@ -105,7 +105,7 @@ export default plugin;
 `ctx.resolvePath(p)` expands `~`, resolves relative paths and enforces `workspace.allow`.
 
 ### `image` plugin
-`view_image` checks the file's real format (PNG, JPEG, GIF, WebP), reads its width × height from the header, and sends the bytes **unchanged**. Files over `maxBytes` are refused instead of shrunk. (The AI app may still scale images on its own side; baan never does.)
+With it on, `read` on a picture checks the file's real format (PNG, JPEG, GIF, WebP), reads its width × height from the header, and sends the bytes **unchanged**. Files over `maxBytes` are refused instead of shrunk. (The AI app may still scale images on its own side; baan never does.)
 
 ## Security notes
 - Password is stored as a scrypt hash; access/refresh tokens are stored as SHA-256 hashes in `state.json` (mode 600).

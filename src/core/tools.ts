@@ -4,7 +4,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import * as z from "zod";
 import type { Config } from "../config.ts";
-import type { ToolDef } from "../plugin.ts";
+import type { ReadHandler, ToolDef } from "../plugin.ts";
 import { SHELL_TOOL_NAME, runShell } from "../platform.ts";
 
 function tailTruncate(text: string, MAX_LINES: number, MAX_BYTES: number): string {
@@ -17,13 +17,15 @@ function tailTruncate(text: string, MAX_LINES: number, MAX_BYTES: number): strin
   return cut ? `[output truncated, showing the last part]\n${out}` : out;
 }
 
-export function coreTools(config: Config): ToolDef[] {
+export function coreTools(config: Config, readers: ReadHandler[] = []): ToolDef[] {
   const { maxLines: MAX_LINES, maxBytes: MAX_BYTES } = config.output;
   const all: ToolDef[] = [
     {
       name: "read",
       title: "Read",
-      description: `Read a text file. Output is truncated to ${MAX_LINES} lines or ${MAX_BYTES / 1024}KB; use offset/limit for large files.`,
+      // Fixed text: it must not change when plugins are turned on/off, or AI apps may ask to approve the tool again.
+      description: `Read a file. Text is truncated to ${MAX_LINES} lines or ${MAX_BYTES / 1024}KB; use offset/limit for large files. ` +
+        `Some other file types, such as images, come back in their own format (offset/limit do not apply).`,
       input: {
         path: z.string().describe("File path (absolute, ~/..., or relative to the working directory)"),
         offset: z.number().int().min(1).optional().describe("1-based line to start from"),
@@ -33,8 +35,12 @@ export function coreTools(config: Config): ToolDef[] {
       async run({ path, offset, limit }, ctx) {
         const file = ctx.resolvePath(path);
         if (!(await stat(file)).isFile()) throw new Error(`Not a file: ${file}`);
+        for (const handle of readers) {
+          const out = await handle(file, ctx);
+          if (out != null) return out;
+        }
         const buf = await readFile(file);
-        if (buf.subarray(0, 8192).includes(0)) throw new Error(`${file} looks like a binary file; read only handles text`);
+        if (buf.subarray(0, 8192).includes(0)) throw new Error(`${file} looks like a binary file; read only handles text and the file types its plugins add`);
         const lines = buf.toString("utf8").split("\n");
         const start = (offset ?? 1) - 1;
         if (start >= lines.length) throw new Error(`offset ${offset} is past the end (${lines.length} lines)`);

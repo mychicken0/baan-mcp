@@ -112,10 +112,10 @@ test("OAuth: register, wrong password, right password, PKCE token, refresh", asy
   token = ref.access_token;
 });
 
-test("tools/list has the 4 core tools + view_image", async () => {
+test("tools/list has only the 4 core tools (the image plugin extends read, adds no tool)", async () => {
   const names = (await rpc("tools/list", {})).body.result.tools.map((t: any) => t.name).sort();
   const shell = process.platform === "win32" ? "powershell" : "bash";
-  assert.deepEqual(names, ["edit", "read", shell, "view_image", "write"].sort());
+  assert.deepEqual(names, ["edit", "read", shell, "write"].sort());
 });
 
 test("write / read / edit", async () => {
@@ -143,21 +143,23 @@ test("shell tool runs in cwd and reports exit code", async () => {
   assert.match(t.content[0].text, /timeout/);
 });
 
-test("view_image returns the original bytes, not resized", async () => {
+test("read returns images as the original bytes, not resized", async () => {
   const img = png(2400, 1600);
   writeFileSync(join(work, "big.png"), img);
-  const r = await call("view_image", { path: "big.png" });
+  const r = await call("read", { path: "big.png" });
   assert.ok(!r.isError, JSON.stringify(r));
   assert.match(r.content[0].text, /2400x1600 px/);
   assert.equal(r.content[1].type, "image");
   assert.equal(r.content[1].mimeType, "image/png");
   assert.ok(Buffer.from(r.content[1].data, "base64").equals(img), "image bytes changed");
-  const rr = await call("read", { path: "big.png" });
-  assert.ok(rr.isError && /binary/.test(rr.content[0].text), "core read must not know about images");
+  writeFileSync(join(work, "blob.bin"), Buffer.from([0, 1, 2, 3, 0, 0, 7]));
+  const rr = await call("read", { path: "blob.bin" });
+  assert.ok(rr.isError && /binary/.test(rr.content[0].text), "non-image binary files are still refused");
+  assert.equal((await call("read", { path: "a/hello.txt" })).content[0].type, "text", "text files still read as text");
 });
 
 test("audit log records tool calls", () => {
   const lines = readFileSync(join(dir, "cfg", "audit.log"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
-  assert.ok(lines.some((l) => l.tool === "view_image" && l.ok));
+  assert.ok(lines.some((l) => l.tool === "read" && l.args?.path === "big.png" && l.ok));
   assert.ok(lines.some((l) => l.tool === "read" && !l.ok));
 });

@@ -3,14 +3,16 @@ import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
 import * as z from "zod";
 import type { Config } from "./config.ts";
-import type { Plugin, PluginFactory, ToolDef } from "./plugin.ts";
+import type { Plugin, PluginFactory, ReadHandler, ToolDef } from "./plugin.ts";
 import { coreTools } from "./core/tools.ts";
 import { IS_WINDOWS } from "./platform.ts";
 
 export interface LoadedTool extends ToolDef { plugin: string }
 
 export async function loadTools(config: Config): Promise<{ tools: LoadedTool[]; plugins: string[] }> {
-  const tools: LoadedTool[] = coreTools(config).map((t) => ({ ...t, plugin: "core" }));
+  // Plugins can extend the built-in read tool; handlers are filled in below and used at call time.
+  const readers: ReadHandler[] = [];
+  const tools: LoadedTool[] = coreTools(config, readers).map((t) => ({ ...t, plugin: "core" }));
   const plugins: string[] = [];
   for (const entry of config.plugins) {
     if (!entry.enabled) continue;
@@ -28,6 +30,7 @@ export async function loadTools(config: Config): Promise<{ tools: LoadedTool[]; 
       if (tools.some((x) => x.name === t.name)) throw new Error(`Tool name "${t.name}" from plugin "${entry.name}" is already taken`);
       tools.push({ ...t, plugin: entry.name });
     }
+    if (typeof plugin.read === "function") readers.push(plugin.read);
     plugins.push(entry.name);
   }
   return { tools, plugins };
