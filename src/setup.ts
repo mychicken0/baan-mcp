@@ -12,6 +12,8 @@ import YAML from "yaml";
 import { loadConfig } from "./config.ts";
 import { State, randomToken } from "./state.ts";
 import { IS_WINDOWS, SHELL_TOOL_NAME, copyToClipboard, expandPath, openUrl } from "./platform.ts";
+import * as ui from "./ui.ts";
+import { c } from "./ui.ts";
 
 const IS_LINUX = process.platform === "linux";
 const FUNNEL_PORTS = [443, 8443, 10000]; // the only ports Tailscale Funnel allows
@@ -27,11 +29,13 @@ function run(cmd: string, args: string[], echo = false): Promise<RunResult> {
     let out = "", err = "";
     const opened = new Set<string>();
     const watch = (s: string) => {
-      if (echo) process.stdout.write(s.replace(/^/gm, "    "));
+      if (echo) process.stdout.write(ui.passthrough(s));
       for (const m of s.matchAll(/https:\/\/login\.tailscale\.com\/\S+/g)) {
         if (opened.has(m[0])) continue;
         opened.add(m[0]);
-        console.log(`\n  → Opening that page in your browser. If nothing opens, copy the link above into a browser.\n`);
+        console.log();
+        ui.say(`${ui.icon("globe")}${c.bold("Opening that page in your browser.")} ${c.gray("Nothing opened? Copy the link above into a browser.")}`);
+        console.log();
         openUrl(m[0]);
       }
     };
@@ -65,41 +69,45 @@ export class Wizard {
   }
 
   async ask(q: string, def = ""): Promise<string> {
-    process.stdout.write(`  ${q}${def ? ` [${def}]` : ""}: `);
+    // Give readline the prompt, so it redraws it (not its default "> ") when the line is edited.
+    this.rl.setPrompt(ui.prompt(q, def));
+    this.rl.prompt();
     const l = await this.nextLine();
     if (l === null) throw new SetupError("Setup cancelled (input closed).");
     if (!process.stdin.isTTY) process.stdout.write(`${l}\n`);
     return l.trim() || def;
   }
   async yes(q: string, def: boolean): Promise<boolean> {
-    const a = (await this.ask(`${q} (y/n)`, def ? "y" : "n")).toLowerCase();
-    return a.startsWith("y");
-  }
-  async choose(q: string, options: string[], def = 1): Promise<number> {
-    console.log(`  ${q}`);
-    options.forEach((o, i) => console.log(`    ${i + 1}) ${o}`));
     for (;;) {
-      const n = Number(await this.ask("Choose", String(def)));
-      if (Number.isInteger(n) && n >= 1 && n <= options.length) return n;
-      console.log(`  Type a number from 1 to ${options.length}.`);
+      const a = (await this.ask(`${q} ${c.gray(def ? "[Y/n]" : "[y/N]")}`)).toLowerCase();
+      if (!a) return def;
+      if (a.startsWith("y")) return true;
+      if (a.startsWith("n")) return false;
+      ui.note("   Type y (yes) or n (no), or press Enter.");
+    }
+  }
+  async choose(q: string, opts: ui.Option[], def = 1): Promise<number> {
+    ui.say(q);
+    console.log();
+    ui.options(opts, def);
+    for (;;) {
+      const n = Number(await this.ask(`Pick 1-${opts.length}`, String(def)));
+      if (Number.isInteger(n) && n >= 1 && n <= opts.length) return n;
+      ui.warn(`Type a number from 1 to ${opts.length}.`);
     }
   }
   /** Run a command that may ask for a password (sudo) or show progress, with this terminal handed over to it. */
   async interactive(cmd: string, args: string[]): Promise<number | null> {
-    console.log(`\n  $ ${[cmd, ...args].join(" ")}`);
+    ui.command([cmd, ...args].join(" "));
     this.rl.pause();
     const code = await new Promise<number | null>((done) => {
-      const c = spawn(cmd, args, { stdio: "inherit" });
-      c.on("error", () => done(null));
-      c.on("close", done);
+      const ch = spawn(cmd, args, { stdio: "inherit" });
+      ch.on("error", () => done(null));
+      ch.on("close", done);
     });
     this.rl.resume();
     return code;
   }
-}
-
-function header(step: number, total: number, title: string) {
-  console.log(`\n── Step ${step}/${total}: ${title} ${"─".repeat(Math.max(0, 50 - title.length))}`);
 }
 
 function portIsFree(port: number, host: string): Promise<boolean> {
@@ -116,7 +124,7 @@ async function findTailscale(): Promise<string | null> {
   const candidates = ["tailscale"];
   if (IS_WINDOWS) candidates.push(`${process.env.ProgramFiles || "C:\\Program Files"}\\Tailscale\\tailscale.exe`);
   if (process.platform === "darwin") candidates.push("/Applications/Tailscale.app/Contents/MacOS/Tailscale");
-  for (const c of candidates) if ((await run(c, ["version"])).code === 0) return c;
+  for (const cand of candidates) if ((await run(cand, ["version"])).code === 0) return cand;
   return null;
 }
 
@@ -132,8 +140,9 @@ class Tailscale {
     let r = await run(this.bin, args, echo);
     if (r.code !== 0 && IS_LINUX && accessDenied(r)) {
       const user = userInfo().username;
-      console.log(`\n  Tailscale needs admin rights once, so baan can manage it as "${user}" from now on (no sudo next time).`);
-      if (!(await this.w.yes(`Run: sudo tailscale set --operator=${user}`, true))) throw new SetupError("Stopped. Tailscale needs this to turn on Funnel.");
+      console.log();
+      ui.say(`${ui.icon("lock")}Tailscale needs admin rights ${c.bold("once")}, so baan can manage it as ${c.cyan(user)} (no sudo next time).`);
+      if (!(await this.w.yes(`Run ${c.cyan(`sudo tailscale set --operator=${user}`)}?`, true))) throw new SetupError("Stopped. Tailscale needs this to turn on Funnel.");
       if ((await this.w.interactive("sudo", [this.bin, "set", `--operator=${user}`])) !== 0) throw new SetupError("Could not set the Tailscale operator.");
       r = await run(this.bin, args, echo);
     }
@@ -150,22 +159,25 @@ class Tailscale {
     for (let attempt = 0; attempt < 6; attempt++) {
       const s = await this.status();
       if (!s) {
-        console.log("\n  The Tailscale service is not running on this computer.");
+        console.log();
+        ui.warn("The Tailscale service is not running on this computer.");
         if (IS_LINUX) {
-          if (!(await this.w.yes("Start it now? Runs: sudo systemctl enable --now tailscaled", true))) throw new SetupError("Stopped. Start Tailscale, then run npm start again.");
+          if (!(await this.w.yes(`Start it now? ${c.gray("(sudo systemctl enable --now tailscaled)")}`, true))) throw new SetupError("Stopped. Start Tailscale, then run npm start again.");
           await this.w.interactive("sudo", ["systemctl", "enable", "--now", "tailscaled"]);
           await new Promise((r) => setTimeout(r, 2000));
         } else {
-          console.log("  Open the Tailscale app (it starts the service), then come back here.");
+          ui.say(`Open the ${c.bold("Tailscale")} app (that starts it), then come back here.`);
           await this.w.ask("Press Enter when Tailscale is open");
         }
         continue;
       }
       const dns = String(s.Self?.DNSName ?? "").replace(/\.$/, "");
       if (s.BackendState === "Running" && dns) return dns;
-      console.log("\n  Sign in to Tailscale (free, with Google / Microsoft / GitHub / Apple). A sign-in page will open in your browser.");
+      console.log();
+      ui.say(`${ui.icon("key")}${c.bold("Sign in to Tailscale")} ${c.gray("— free, with Google / Microsoft / GitHub / Apple.")}`);
+      ui.note("   A sign-in page opens in your browser.");
       const r = await this.run(["up"], true);
-      if (r.code !== 0) console.log(`  Tailscale said: ${(r.err || r.out).trim()}`);
+      if (r.code !== 0) ui.warn(`Tailscale said: ${(r.err || r.out).trim()}`);
     }
     throw new SetupError("Tailscale is still not signed in. Open the Tailscale app, sign in, then run npm start again.");
   }
@@ -180,9 +192,11 @@ class Tailscale {
     const ours = (p: number) => { const t = target(p); return !!t && new RegExp(`:${localPort}/?$`).test(t); };
     const port = FUNNEL_PORTS.find(ours) ?? FUNNEL_PORTS.find((p) => !used(p));
     if (!port) throw new SetupError(`Tailscale ports ${FUNNEL_PORTS.join(", ")} are all used by other services. Free one with "tailscale serve status", then run setup again.`);
-    if (port !== 443 && !ours(port)) console.log(`  Port 443 is already used by something else in Tailscale, so baan uses ${port}.`);
+    if (port !== 443 && !ours(port)) ui.note(`   Port 443 is already used by something else in Tailscale, so baan uses ${port}.`);
 
-    console.log("\n  Turning on Tailscale Funnel. The first time, a Tailscale page opens: press the button to allow Funnel, then come back.");
+    console.log();
+    ui.working(`${c.bold("Turning on Tailscale Funnel…")}`);
+    ui.note("   First time only: a Tailscale page opens — press the button to allow Funnel, then come back.");
     const r = await this.run(["funnel", "--bg", "--yes", `--https=${port}`, `http://127.0.0.1:${localPort}`], true);
     if (r.code !== 0) throw new SetupError(`Tailscale Funnel failed:\n${(r.err || r.out).trim()}`);
     return port === 443 ? `https://${dns}` : `https://${dns}:${port}`;
@@ -192,13 +206,14 @@ class Tailscale {
 async function exposeWithTailscale(w: Wizard, localPort: number): Promise<string> {
   let bin = await findTailscale();
   while (!bin) {
-    console.log("\n  Tailscale is not installed.");
+    console.log();
+    ui.warn("Tailscale is not installed yet.");
     if (IS_LINUX) {
-      if (!(await w.yes("Install it now with the official script? Runs: curl -fsSL https://tailscale.com/install.sh | sh", true)))
+      if (!(await w.yes(`Install it now with the official script? ${c.gray("(curl -fsSL https://tailscale.com/install.sh | sh)")}`, true)))
         throw new SetupError(`Install Tailscale (${TAILSCALE_DOWNLOAD}), then run npm start again.`);
       await w.interactive("sh", ["-c", "curl -fsSL https://tailscale.com/install.sh | sh"]);
     } else {
-      console.log(`  Opening ${TAILSCALE_DOWNLOAD} — install Tailscale, open it once, then come back here.`);
+      ui.say(`${ui.icon("globe")}Opening ${c.cyan(TAILSCALE_DOWNLOAD)} — install Tailscale, open it once, then come back.`);
       openUrl(TAILSCALE_DOWNLOAD);
       await w.ask("Press Enter when Tailscale is installed");
     }
@@ -206,9 +221,9 @@ async function exposeWithTailscale(w: Wizard, localPort: number): Promise<string
   }
   const ts = new Tailscale(bin, w);
   const dns = await ts.ready();
-  console.log(`  ✓ Tailscale is on. This computer is ${dns}`);
+  ui.ok(`Tailscale is on. This computer is ${c.bold(dns)}`);
   const url = await ts.funnel(dns, localPort);
-  console.log(`  ✓ Funnel is on: ${url} → http://127.0.0.1:${localPort}`);
+  ui.ok(`Funnel is on: ${c.bold(url)} ${c.gray(`→ http://127.0.0.1:${localPort}`)}`);
   return url;
 }
 
@@ -223,54 +238,63 @@ async function waitReachable(publicUrl: string, maxSec: number): Promise<boolean
       const r = await fetch(`${publicUrl}/`, { signal: AbortSignal.timeout(8000) });
       if (r.ok && (await r.text()).startsWith("baan")) return true;
     } catch { /* not yet */ }
-    if (!told) { console.log(`  Checking that ${publicUrl} works${maxSec > 120 ? " (a new Tailscale name can take a few minutes)" : ""}…`); told = true; }
+    if (!told) {
+      ui.working(`Checking that ${c.bold(publicUrl)} works${maxSec > 120 ? c.gray(" (a new Tailscale name can take a few minutes)") : ""}…`);
+      told = true;
+    }
     await new Promise((r) => setTimeout(r, 5000));
   }
   return false;
 }
 
-export async function runSetup(configPath: string): Promise<void> {
+/** Returns true when setup finished (the caller then starts baan). */
+export async function runSetup(configPath: string): Promise<boolean> {
   const w = new Wizard();
   try {
-    console.log("\nbaan setup — about 2 minutes. Press Enter to accept the answer in [brackets].");
+    ui.clearScreen();
+    ui.banner("baan setup", "let AI apps use this computer", "About 2 minutes. Press Enter to keep the answer shown in (gray).");
 
     if (existsSync(configPath)) {
-      console.log(`\n  baan is already set up (${configPath}).`);
-      if (!(await w.yes("Set it up again? Your AI apps will need to sign in again", false))) return;
+      console.log();
+      ui.say(`baan is already set up ${c.gray(`(${configPath})`)}`);
+      if (!(await w.yes("Set it up again? Your AI apps will need to sign in again", false))) return false;
     }
     const TOTAL = 4;
 
-    header(1, TOTAL, "Folder");
-    console.log("  The AI can only read and edit files inside this folder.");
+    ui.step(1, TOTAL, "folder", "Folder");
+    ui.say("The AI can only read and edit files inside this folder.");
+    console.log();
     let folder = "";
     for (;;) {
       folder = expandPath(await w.ask("Folder", homedir()));
       if (existsSync(folder) && statSync(folder).isDirectory()) break;
-      console.log(`  "${folder}" is not a folder. Try again.`);
+      ui.warn(`"${folder}" is not a folder. Try again.`);
     }
+    ui.ok(folder);
 
-    header(2, TOTAL, "What the AI may do");
-    const level = await w.choose("Pick one (you can change it later in the config file):", [
-      "Read files only  (safest)",
-      "Read + create + edit files",
-      `Everything, including running commands (${SHELL_TOOL_NAME})`,
+    ui.step(2, TOTAL, "lock", "What the AI may do");
+    const level = await w.choose(`Pick one ${c.gray("(change it any time: npm run config)")}:`, [
+      { icon: "bolt", label: "Everything", note: "recommended", tone: "good",
+        detail: `read + write + edit files, and run commands (${SHELL_TOOL_NAME}) — what pi does` },
+      { icon: "pencil", label: "Files only", detail: "read + write + edit, no commands" },
+      { icon: "eye", label: "Read only", detail: "the AI can look, not change anything" },
     ]);
-    let tools = [["read"], ["read", "write", "edit"], ["read", "write", "edit", "bash"]][level - 1];
-    if (level === 3) {
-      console.log(`\n  ⚠ With ${SHELL_TOOL_NAME}, anyone who logs in can do ANYTHING on this computer as you`);
-      console.log("    (delete files, install programs, read secrets) — not only inside the folder above.");
-      if ((await w.ask('Type "yes" to allow it')).toLowerCase() !== "yes") {
-        console.log("  OK, files only.");
-        tools = ["read", "write", "edit"];
-      }
+    const tools = [["read", "write", "edit", "bash"], ["read", "write", "edit"], ["read"]][level - 1];
+    if (level === 1) {
+      ui.danger(`Good to know: ${SHELL_TOOL_NAME} can do anything you can do on this computer`, [
+        "so only you should know the password (setup makes a strong one).",
+        `${SHELL_TOOL_NAME} is not limited to the folder above.`,
+      ]);
     }
-    const image = await w.yes("Let the AI look at pictures (PNG/JPEG/GIF/WebP, full quality)?", true);
+    console.log();
+    const image = await w.yes(`${ui.icon("picture")}Let the AI look at pictures? ${c.gray("(PNG/JPEG/GIF/WebP, full quality)")}`, true);
+    ui.ok(`Tools: ${tools.map((t) => (t === "bash" ? SHELL_TOOL_NAME : t)).join(", ")}${image ? ", view_image" : ""}`);
 
-    header(3, TOTAL, "Reach it from the internet");
-    const how = await w.choose("Your AI app (Gemini, Claude, ChatGPT) runs on the internet, so it needs an https address:", [
-      "Tailscale Funnel — free, no domain needed  (recommended)",
-      "I already have an https address that points here (Cloudflare Tunnel, my own proxy, …)",
-      "Only this computer, for testing  (AI apps on the web can't reach it)",
+    ui.step(3, TOTAL, "globe", "Reach it from the internet");
+    const how = await w.choose(`Gemini / Claude / ChatGPT run on the internet, so baan needs an ${c.bold("https")} address:`, [
+      { icon: "globe", label: "Tailscale Funnel", note: "recommended", tone: "good", detail: "free, no domain needed — baan sets it up for you" },
+      { icon: "link", label: "My own https address", detail: "Cloudflare Tunnel, your own domain, a reverse proxy…" },
+      { icon: "laptop", label: "Only this computer", detail: "for testing — web AI apps can't reach it" },
     ]);
 
     const example = readFileSync(fileURLToPath(new URL("../baan.example.yml", import.meta.url)), "utf8");
@@ -285,14 +309,15 @@ export async function runSetup(configPath: string): Promise<void> {
       for (;;) {
         publicUrl = (await w.ask("Your https address (without /mcp)")).replace(/\/+$/, "").replace(/\/mcp$/, "");
         if (/^https:\/\/[^/\s]+$/.test(publicUrl)) break;
-        console.log("  It must look like https://something.example.com");
+        ui.warn("It must look like https://something.example.com");
       }
-      console.log(`  Point it at http://${host}:${port}`);
+      ui.tip(`Point that address at ${c.bold(`http://${host}:${port}`)}`);
     } else publicUrl = `http://localhost:${port}`;
 
-    header(4, TOTAL, "Password");
+    ui.step(4, TOTAL, "key", "Password");
     const password = randomToken(18);
-    console.log("  A strong password was made for you. You'll type it once when you connect an AI app.");
+    ui.ok("A strong password was made for you.");
+    ui.note("   You type it once, on the login page, when you connect an AI app.");
 
     doc.setIn(["server", "port"], port);
     doc.setIn(["server", "publicUrl"], publicUrl);
@@ -307,30 +332,43 @@ export async function runSetup(configPath: string): Promise<void> {
     const state = new State(config.dataDir);
     await state.setPassword(password); // also signs out every app connected before
 
+    console.log();
     const { startServer } = await import("./server.ts");
-    await startServer(config);
+    const server = await startServer(config, { quiet: true });
 
     const reachable = how === 3 || (await waitReachable(config.server.publicUrl, how === 1 ? 600 : 60));
     const mcpUrl = `${config.server.publicUrl}/mcp`;
     const copied = await copyToClipboard(mcpUrl);
 
-    const line = "═".repeat(64);
-    console.log(`\n${line}`);
-    console.log("  ✓ baan is running. Now connect your AI app:\n");
-    console.log("  1. In Gemini / Claude / ChatGPT, add a custom connector (MCP server) with this URL:");
-    console.log(`\n       ${mcpUrl}${copied ? "   (copied)" : ""}\n`);
-    console.log("  2. A baan login page opens. Type this password and press Allow:");
-    console.log(`\n       ${password}\n`);
-    console.log("     Shown only once — save it in your password manager. New password: npm run passwd");
-    if (!reachable) console.log(`\n  ⚠ ${config.server.publicUrl} does not answer yet. Open it in a browser in a few minutes;\n    when it shows "baan MCP server", the AI app will work.`);
-    console.log(`\n  Allowed folder: ${folder}`);
-    console.log(`  Tools: ${tools.map((t) => (t === "bash" ? SHELL_TOOL_NAME : t)).join(", ")}${image ? ", view_image" : ""}`);
-    console.log(`  Config: ${configPath}`);
-    console.log("\n  Keep this window open while you use it. Next time just run: npm start");
-    console.log(line);
-    return;
+    console.log();
+    ui.rule(c.green);
+    console.log();
+    ui.say(`${ui.icon("party")}${c.bold(c.green("All set! baan is running."))} ${c.gray("Now connect your AI app:")}`);
+    console.log();
+    ui.instruction(1, "In Gemini / Claude / ChatGPT, add a custom connector (MCP server) with this URL:",
+      `${ui.icon("link")}${c.bold(c.cyan(c.underline(mcpUrl)))}`, copied ? c.green(`${ui.icon("copy")}copied`) : "");
+    ui.instruction(2, "A baan login page opens. Type this password and press Allow:",
+      `${ui.icon("key")}${c.bold(c.yellow(password))}`);
+    ui.warn(`Shown only once — save it in your password manager now. ${c.gray("New password: npm run passwd")}`);
+    if (!reachable) {
+      console.log();
+      ui.warn(`${config.server.publicUrl} does not answer yet.`);
+      ui.note(`   Open it in a browser in a few minutes; when it shows "baan MCP server", the AI app will work.`);
+    }
+    console.log();
+    ui.rows([
+      ["folder", "Folder", folder],
+      ["tools", "Tools", tools.map((t) => (t === "bash" ? SHELL_TOOL_NAME : t)).join(", ") + (image ? ", view_image" : "")],
+      ["gear", "Config", configPath],
+    ]);
+    console.log();
+    ui.tip(`Keep this window open while you use it. Next time just run: ${c.bold(c.cyan("npm start"))}`);
+    ui.tip(`Change something later? Edit the config and save — baan restarts by itself. ${c.gray("See GUIDE.md")}`);
+    ui.rule(c.green);
+    await server.close(); // npm start now runs it with auto-restart
+    return true;
   } catch (e) {
-    if (e instanceof SetupError) { console.error(`\n  ✗ ${e.message}`); process.exitCode = 1; return; }
+    if (e instanceof SetupError) { ui.fail(e.message); process.exitCode = 1; return false; }
     throw e;
   } finally {
     w.close();

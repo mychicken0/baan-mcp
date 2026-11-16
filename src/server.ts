@@ -11,6 +11,8 @@ import { State } from "./state.ts";
 import { loadTools, type LoadedTool } from "./plugins.ts";
 import { expandPath, isInside, realPathLoose } from "./platform.ts";
 import type { ToolContent, ToolContext } from "./plugin.ts";
+import * as ui from "./ui.ts";
+import { c } from "./ui.ts";
 
 const VERSION = "0.1.0";
 
@@ -20,7 +22,9 @@ function clip(v: unknown): unknown {
   return v;
 }
 
-export async function startServer(config: Config) {
+export interface RunningServer { close(): Promise<void> }
+
+export async function startServer(config: Config, opts: { quiet?: boolean; supervised?: boolean } = {}): Promise<RunningServer> {
   const state = new State(config.dataDir);
   if (!state.data.passwordHash) throw new Error("No password set. Run: baan init  (or baan passwd)");
 
@@ -121,13 +125,28 @@ export async function startServer(config: Config) {
   app.get("/", (_req, res) => res.type("text").send("baan MCP server. Connect your AI app to /mcp\n"));
 
   const { host, port } = config.server;
-  await new Promise<void>((ok, fail) => {
-    const srv = app.listen(port, host, () => ok());
-    srv.on("error", fail);
+  const srv = await new Promise<import("node:http").Server>((ok, fail) => {
+    const s = app.listen(port, host, () => ok(s));
+    s.on("error", fail);
   });
-  console.log(`baan ${VERSION} listening on http://${host}:${port}`);
-  console.log(`  public MCP URL: ${mcpUrl.href}`);
-  console.log(`  tools: ${toolNames.join(", ")}${plugins.length ? `  (plugins: ${plugins.join(", ")})` : ""}`);
-  console.log(`  allowed folders: ${allowRoots.join(", ")}`);
-  if (!["127.0.0.1", "::1", "localhost"].includes(host)) console.warn(`  WARNING: listening on ${host}, not only this computer`);
+  const local = `http://${host}:${port}`;
+  const toolList = toolNames.join(", ") + (plugins.length ? c.gray(`  (plugins: ${plugins.join(", ")})`) : "");
+  if (opts.quiet) ui.ok(`Running on ${local}  ${c.gray("·")}  ${toolList}`);
+  else {
+    console.log();
+    ui.say(`${ui.icon("rocket")}${c.bold(c.green(`baan ${VERSION} is running`))} ${c.gray(`(listening on ${local})`)}`);
+    console.log();
+    ui.rows([
+      ["link", "MCP URL", c.bold(c.cyan(mcpUrl.href))],
+      ["tools", "Tools", toolList],
+      ["folder", "Folders", allowRoots.join(", ")],
+      ["gear", "Config", config.configPath],
+    ]);
+    console.log();
+    if (!opts.supervised) ui.tip("Keep this window open while you use it. Stop: Ctrl+C");
+  }
+  if (!["127.0.0.1", "::1", "localhost"].includes(host)) ui.warn(`Listening on ${host}, not only this computer`);
+  return {
+    close: () => new Promise<void>((done) => { srv.close(() => done()); srv.closeAllConnections?.(); }),
+  };
 }

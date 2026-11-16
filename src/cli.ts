@@ -8,13 +8,18 @@ import { defaultConfigPath, loadConfig } from "./config.ts";
 import { State, randomToken } from "./state.ts";
 import { expandPath } from "./platform.ts";
 import { loadTools } from "./plugins.ts";
+import * as ui from "./ui.ts";
+import { c } from "./ui.ts";
 
 const HELP = `baan — remote MCP server for your own computer
 
-  baan start                              first time: guided setup, then run. After that: run
+  baan start                              first time: guided setup. Then run, and restart by itself when the config,
+                                          a plugin or baan's code changes (keys: r restart, c edit config, q quit)
   baan setup                              guided setup again (folder, tools, Tailscale, password)
+  baan config                             open the config file in an editor
+  baan check                              check the config and load every plugin, without starting
   baan init [--public-url URL] [--port N] [--tools read,write,edit,bash] [--password-file FILE] [--force]
-  baan serve
+  baan serve                              run once, no auto-restart (for services / scripts)
   baan passwd [--password-file FILE]     new random password, signs out every app
   baan tools                              list enabled tools
 
@@ -27,9 +32,14 @@ async function newPassword(state: State, file?: string) {
     const f = expandPath(file);
     writeFileSync(f, pw + "\n", { mode: 0o600 });
     try { chmodSync(f, 0o600); } catch { /* Windows */ }
-    console.log(`Password saved to ${f} (only you can read it). Keep it somewhere safe, then delete the file.`);
+    ui.ok(`Password saved to ${f} ${c.gray("(only you can read it). Keep it somewhere safe, then delete the file.")}`);
   } else {
-    console.log(`\n  Password: ${pw}\n\n  Shown once. You type it on the login page when connecting an AI app.\n`);
+    console.log();
+    ui.say(`${ui.icon("key")}${c.gray("New password:")}  ${c.bold(c.yellow(pw))}`);
+    console.log();
+    ui.warn(`Shown only once. ${c.gray("Type it on the baan login page when you connect an AI app.")}`);
+    ui.tip("Every connected AI app must sign in again. If baan is running (npm start), it restarts by itself.");
+    console.log();
   }
 }
 
@@ -53,10 +63,26 @@ async function main() {
 
   if (cmd === "setup" || (cmd === "start" && !existsSync(configPath))) {
     const { runSetup } = await import("./setup.ts");
-    await runSetup(configPath);
+    const done = await runSetup(configPath);
+    if (cmd === "start" && done) {
+      const { supervise } = await import("./supervisor.ts");
+      await supervise(configPath, { quietFirst: true });
+    }
     return;
   }
-  if (cmd === "start") cmd = "serve";
+  if (cmd === "start") {
+    loadConfig(configPath); // fail early with a clear message
+    const { supervise } = await import("./supervisor.ts");
+    await supervise(configPath);
+    return;
+  }
+  if (cmd === "config") {
+    const { openInEditor } = await import("./platform.ts");
+    ui.say(`${ui.icon("pencil")}${c.bold(configPath)}`);
+    ui.tip(`Save it. If baan is running (npm start), it restarts by itself.`);
+    await openInEditor(configPath);
+    return;
+  }
 
   if (cmd === "init") {
     if (existsSync(configPath) && !values.force) {
@@ -89,9 +115,19 @@ async function main() {
     return;
   }
 
+  if (cmd === "check") {
+    const { tools, plugins } = await loadTools(config);
+    ui.ok(`Config OK. Tools: ${tools.map((t) => t.name).join(", ")}${plugins.length ? c.gray(`  (plugins: ${plugins.join(", ")})`) : ""}`);
+    return;
+  }
+
   if (cmd === "serve") {
     const { startServer } = await import("./server.ts");
-    await startServer(config);
+    const supervised = process.env.BAAN_SUPERVISED === "1";
+    const srv = await startServer(config, { quiet: process.env.BAAN_QUIET === "1", supervised });
+    const stop = () => void srv.close().finally(() => process.exit(0));
+    process.on("SIGTERM", stop);
+    process.on("SIGINT", stop);
     return;
   }
 
@@ -99,4 +135,4 @@ async function main() {
   process.exitCode = 2;
 }
 
-main().catch((e) => { console.error((e as Error).message); process.exit(1); });
+main().catch((e) => { ui.fail((e as Error).message); process.exit(1); });

@@ -15,7 +15,7 @@ test("npm start with no config runs the guided setup and starts the server", asy
   mkdirSync(work);
   const cfg = join(dir, "cfg", "baan.yml");
   const p = spawn(process.execPath, [CLI, "start", "--config", cfg], { stdio: ["pipe", "pipe", "pipe"] });
-  // folder, level 2 (files), no images, local only
+  // folder, level 2 (files only; 1 = everything is the default), no images, local only
   p.stdin.end(`${work}\n2\nn\n3\n`);
   let out = "";
   await new Promise<void>((ok, fail) => {

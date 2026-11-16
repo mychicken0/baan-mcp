@@ -8,7 +8,7 @@
 - **Survives restarts.** Stateless MCP + tokens saved to disk, so restarting baan doesn't disconnect your AI app.
 - **No hardcoded values.** Everything is in `baan.yml` or env vars.
 
-> ⚠️ **Read this first.** Anyone who logs in can do whatever the enabled tools allow. `bash`/`powershell` = full control of your computer as your user, and it is **not** limited by `workspace.allow`. Plugins run with your full rights too. Use a long password, keep baan on `127.0.0.1` behind a tunnel, and only enable what you need. New configs start with `read` only.
+> ⚠️ **Read this first.** Anyone who logs in can do whatever the enabled tools allow. `bash`/`powershell` = full control of your computer as your user, and it is **not** limited by `workspace.allow`. Plugins run with your full rights too. Keep the password to yourself (setup makes a long random one), keep baan on `127.0.0.1` behind a tunnel, and turn off what you don't need.
 
 ## Quick start
 You need [Node.js 22.18+](https://nodejs.org) and [Git](https://git-scm.com). Same commands on Linux, macOS and Windows:
@@ -18,23 +18,29 @@ cd baan-mcp
 npm install
 npm start
 ```
-That's it. `npm start` walks you through everything, and you mostly just press Enter:
+That's it. `npm start` walks you through everything, with colors and icons, and you mostly just press Enter:
 
 1. **Folder** the AI may work in (default: your home folder).
-2. **What it may do:** read only (default) / + create and edit files / + run commands.
+2. **What it may do:** ⭐ everything like pi: read, write, edit and run commands (recommended) / files only / read only.
 3. **Internet address.** No domain needed: baan sets up **Tailscale Funnel** for you. It installs Tailscale if missing (Linux), opens the free sign-in page in your browser, turns Funnel on, and finds your `https://<computer>.<tailnet>.ts.net` address itself. Already have Cloudflare Tunnel or your own domain? Pick that instead.
 4. **Password** is made for you.
 
 At the end it prints the URL to paste into your AI app (also copied to the clipboard) and the password for the login page. Next time just run `npm start`.
 
+**Changing things later:** edit the config (`npm run config`, or press **c** in the baan window) and save. baan checks it and **restarts by itself**. It does the same when a plugin's code changes. If the new config is broken, the old server keeps running and you see the error. Keys in the baan window: **r** restart, **c** edit config, **g** guide, **q** quit.
+
+📖 **[GUIDE.md](GUIDE.md)**: change settings, add or remove plugins, write your own plugin, troubleshooting.
+
 ## Commands
 | | |
 |---|---|
-| `npm start` (`baan start`) | first run: guided setup, then start. Later: start |
+| `npm start` (`baan start`) | first run: guided setup. Then run, and restart by itself on changes |
 | `npm run setup` (`baan setup`) | run the guided setup again |
+| `npm run config` (`baan config`) | open the config file in an editor |
+| `npm run check` (`baan check`) | check the config and load every plugin, without starting |
 | `npm run passwd` (`baan passwd`) | new random password; signs out every connected app |
 | `baan init [--public-url URL] [--port N] [--tools a,b] [--password-file F]` | create config + password without questions (scripts) |
-| `baan serve` | start the server |
+| `baan serve` | run once, no auto-restart (for services and scripts) |
 | `baan tools` | list enabled tools |
 
 Every command takes `--config FILE`. Env overrides: `BAAN_CONFIG`, `BAAN_DATA_DIR`, `BAAN_HOST`, `BAAN_PORT`, `BAAN_PUBLIC_URL`.
@@ -45,6 +51,7 @@ baan only listens on `127.0.0.1`; the AI app reaches it through a tunnel. The UR
 - **Your own domain** (Cloudflare Tunnel, reverse proxy): point it at `http://127.0.0.1:<port>` and enter the address in setup.
 
 ## Plugins
+Full how-to in [GUIDE.md](GUIDE.md#plugins).
 ```yaml
 plugins:
   image: { from: baan-plugin-image, maxBytes: 20971520 }   # bundled package in plugins/image
@@ -85,6 +92,6 @@ npm test          # end-to-end: OAuth flow + all tools + image bytes unchanged
 ```
 
 ## Status
-Early prototype. Planned: run in the background / at login, a setup page in the browser, `baan plugin add/remove`, hot-reload of plugins, single-file installers.
+Early prototype. Planned: run in the background / at login, a setup page in the browser, `baan plugin add/remove`, single-file installers.
 
 Inspired by [pi](https://github.com/earendil-works/pi) (minimal tool set) and DeepSeek Harness (everything is a plugin). Not affiliated with either.

@@ -105,3 +105,37 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   }
   return false;
 }
+
+/** Stop a process and everything it started. Windows: taskkill /T. Elsewhere: SIGTERM, then SIGKILL after `graceMs`. */
+export function stopProcessTree(child: import("node:child_process").ChildProcess, graceMs = 3000): Promise<void> {
+  return new Promise((done) => {
+    if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) return done();
+    child.once("exit", () => { clearTimeout(t); done(); });
+    const hard = () => {
+      try {
+        if (IS_WINDOWS) spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true }).on("error", () => child.kill());
+        else child.kill("SIGKILL");
+      } catch { /* already gone */ }
+    };
+    const t = setTimeout(hard, IS_WINDOWS ? 0 : graceMs);
+    if (!IS_WINDOWS) child.kill("SIGTERM");
+  });
+}
+
+/** Open a text file for editing: $VISUAL/$EDITOR in this terminal if set, else Notepad (Windows), TextEdit (macOS) or the desktop's default app. */
+export function openInEditor(file: string): Promise<void> {
+  const editor = process.env.VISUAL || process.env.EDITOR;
+  return new Promise((done) => {
+    let cmd: string, args: string[], wait = false;
+    if (editor) { cmd = editor; args = [file]; wait = true; }
+    else if (IS_WINDOWS) { cmd = "notepad.exe"; args = [file]; }
+    else if (process.platform === "darwin") { cmd = "open"; args = ["-t", file]; }
+    else { cmd = "xdg-open"; args = [file]; }
+    try {
+      const c = spawn(cmd, args, wait ? { stdio: "inherit", shell: IS_WINDOWS } : { stdio: "ignore", detached: true, windowsHide: true });
+      c.on("error", () => done());
+      if (wait) c.on("close", () => done());
+      else { c.unref(); done(); }
+    } catch { done(); }
+  });
+}
