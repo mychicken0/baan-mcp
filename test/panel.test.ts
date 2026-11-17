@@ -1,4 +1,5 @@
 // Control panel: only this computer + the key get in; settings are checked before saving; restart / stop reach a running baan.
+import "./isolate.ts"; // never touch the real baan service
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
@@ -13,7 +14,7 @@ const CLI = join(import.meta.dirname, "..", "src", "cli.ts");
 const freePort = () => new Promise<number>((ok) => { const s = createServer().listen(0, "127.0.0.1", () => { const p = (s.address() as any).port; s.close(() => ok(p)); }); });
 
 function run(args: string[], until: RegExp): Promise<{ p: ChildProcess; out: () => string; m: RegExpMatchArray }> {
-  const p = spawn(process.execPath, [CLI, ...args], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, BAAN_SERVICE_NAME: "baan-paneltest" } });
+  const p = spawn(process.execPath, [CLI, ...args], { stdio: ["ignore", "pipe", "pipe"], env: process.env });
   let out = "";
   return new Promise((ok, fail) => {
     const t = setTimeout(() => fail(new Error(`timeout waiting for ${until}:\n${out}`)), 20000);

@@ -1,4 +1,5 @@
 // End-to-end: init -> serve -> OAuth (DCR + password page + PKCE) -> MCP tool calls. Runs on Linux, macOS and Windows.
+import "./isolate.ts"; // never touch the real baan service
 import { test, after, before } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";

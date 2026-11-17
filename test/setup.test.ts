@@ -1,4 +1,5 @@
 // Guided setup with typed answers (local-only option, so no Tailscale needed).
+import "./isolate.ts"; // never touch the real baan service
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";

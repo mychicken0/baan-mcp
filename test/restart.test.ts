@@ -1,4 +1,5 @@
 // npm start restarts the server when baan.yml is saved, and keeps the old one running if the new config is broken.
+import "./isolate.ts"; // never touch the real baan service
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
