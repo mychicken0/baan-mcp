@@ -59,7 +59,13 @@ const plugin: PluginFactory = ({ options }) => {
       if (!kind) return null;
       const dims = kind.size ? `${kind.size[0]}x${kind.size[1]} px, ` : "";
       return [
-        { type: "text", text: `${file} (${dims}${(data.length / 1024).toFixed(0)} KB, ${kind.mime}, original — not resized)` },
+        {
+          type: "text",
+          text:
+            `${file} (${dims}${(data.length / 1024).toFixed(0)} KB, ${kind.mime}, original — not resized). ` +
+            `The picture itself follows as an image block. Some AI apps drop image blocks from tool results; ` +
+            `if you cannot see the picture, say so plainly and do not guess or describe what it shows.`,
+        },
         { type: "image", data: data.toString("base64"), mimeType: kind.mime },
       ];
     },
