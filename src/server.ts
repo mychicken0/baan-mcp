@@ -68,7 +68,10 @@ export async function startServer(config: Config, opts: { quiet?: boolean; super
       },
       async (args: Record<string, unknown>, extra: { signal?: AbortSignal }) => {
         const started = Date.now();
-        const ctx: ToolContext = { cwd: config.workspace.cwd, resolvePath, signal: extra.signal, toolNames };
+        const ctx: ToolContext = {
+          cwd: config.workspace.cwd, resolvePath, signal: extra.signal, toolNames,
+          client: { id: clientId, name: state.data.clients[clientId]?.client_name },
+        };
         try {
           const out = await t.run(args, ctx);
           const content: ToolContent[] = typeof out === "string" ? [{ type: "text", text: out }] : out;

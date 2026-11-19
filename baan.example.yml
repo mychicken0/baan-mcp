@@ -45,3 +45,5 @@ plugins:
   image:
     from: baan-plugin-image       # bundled in plugins/image as its own package
     maxBytes: 20971520            # 20 MB. Images are never resized; bigger files are refused.
+    # textClients: [Google]       # apps that drop image blocks (Gemini web = "Google") get a base64 JPEG as text instead
+    # textMaxDim: 768             # ...scaled to fit this many px (needs ImageMagick)

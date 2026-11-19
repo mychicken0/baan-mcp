@@ -1,8 +1,27 @@
 // image plugin: lets the built-in `read` tool return images (PNG, JPEG, GIF, WebP) as the ORIGINAL file bytes.
 // No resizing, no re-encoding, no quality loss. It adds no tool of its own, so turning it on/off doesn't change
 // the AI app's tool list. A file bigger than maxBytes is refused (never shrunk), so the model always gets the real pixels.
+//
+// Exception: some AI apps drop image blocks from tool results before the model sees them (the Gemini web app,
+// which registers as "Google", only passes text through). For those apps (option `textClients`) the picture is
+// sent as base64 JPEG *text* instead, scaled down to `textMaxDim` px with ImageMagick so it fits in a text result.
+// The model decodes it on its side (e.g. in its code tool) and looks at it.
 import { open, readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import type { PluginFactory } from "../../src/plugin.ts";
+
+/** Scale to fit dim x dim (never up), flatten transparency on white, JPEG. Tries `magick`, then `convert`. */
+function toJpeg(file: string, dim: number, quality: number, signal?: AbortSignal): Promise<Buffer> {
+  const args = [`${file}[0]`, "-auto-orient", "-resize", `${dim}x${dim}>`, "-background", "white", "-flatten", "-strip", "-quality", String(quality), "jpeg:-"];
+  const run = (bin: string) => new Promise<Buffer>((ok, fail) =>
+    execFile(bin, args, { encoding: "buffer", maxBuffer: 64 * 1024 * 1024, timeout: 60_000, signal }, (err, out) => (err ? fail(err) : ok(out))));
+  return run("magick").catch((e: NodeJS.ErrnoException) => {
+    if (e.code !== "ENOENT") throw e;
+    return run("convert").catch((e2: NodeJS.ErrnoException) => {
+      throw e2.code === "ENOENT" ? new Error("ImageMagick (magick or convert) is not installed; it is needed to send pictures as text to this app") : e2;
+    });
+  });
+}
 
 type Kind = { mime: string; size?: [number, number] };
 
@@ -33,9 +52,12 @@ function sniff(b: Buffer): Kind | null {
 
 const plugin: PluginFactory = ({ options }) => {
   const maxBytes = Number(options.maxBytes ?? 20 * 1024 * 1024);
+  const textClients = ((options.textClients as string[] | undefined) ?? ["Google"]).map((n) => String(n).toLowerCase());
+  const textMaxDim = Number(options.textMaxDim ?? 768);
+  const textQuality = Number(options.textQuality ?? 80);
   return {
     name: "image",
-    async read(file) {
+    async read(file, ctx) {
       // Look at the first bytes only; anything that isn't an image goes on to the text reader.
       const fh = await open(file, "r");
       let head: Buffer, size: number;
@@ -58,11 +80,29 @@ const plugin: PluginFactory = ({ options }) => {
       const kind = sniff(data);
       if (!kind) return null;
       const dims = kind.size ? `${kind.size[0]}x${kind.size[1]} px, ` : "";
+      const info = `${file} (${dims}${(data.length / 1024).toFixed(0)} KB, ${kind.mime})`;
+
+      if (textClients.includes(String(ctx.client?.name ?? "").toLowerCase())) {
+        // This app drops image blocks, so send the picture as text it can decode itself.
+        const jpg = await toJpeg(file, textMaxDim, textQuality, ctx.signal);
+        return [
+          {
+            type: "text",
+            text:
+              `${info}. This app does not pass image blocks to the model, so the picture is sent as text: ` +
+              `a JPEG scaled to fit ${textMaxDim}x${textMaxDim} px (${(jpg.length / 1024).toFixed(0)} KB), base64-encoded, between the BEGIN/END lines. ` +
+              `To see it, decode the base64 into a .jpg (for example with your code tool) and look at the image. ` +
+              `Do not describe the picture before you have decoded and looked at it; if you cannot, say so plainly.\n` +
+              `-----BEGIN IMAGE image/jpeg BASE64-----\n${jpg.toString("base64")}\n-----END IMAGE-----`,
+          },
+        ];
+      }
+
       return [
         {
           type: "text",
           text:
-            `${file} (${dims}${(data.length / 1024).toFixed(0)} KB, ${kind.mime}, original — not resized). ` +
+            `${info.slice(0, -1)}, original — not resized). ` +
             `The picture itself follows as an image block. Some AI apps drop image blocks from tool results; ` +
             `if you cannot see the picture, say so plainly and do not guess or describe what it shows.`,
         },

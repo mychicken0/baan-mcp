@@ -49,6 +49,30 @@ async function rpc(method: string, params: unknown, auth = token) {
 }
 const call = async (name: string, args: unknown) => (await rpc("tools/call", { name, arguments: args })).body.result;
 
+/** Register an OAuth client with this name, approve it with the password, return an access token. */
+async function login(clientName: string): Promise<string> {
+  const meta = await (await fetch(`${base}/.well-known/oauth-authorization-server`)).json();
+  const reg = await (await fetch(meta.registration_endpoint, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ client_name: clientName, redirect_uris: ["http://127.0.0.1:9/cb"], token_endpoint_auth_method: "none" }),
+  })).json();
+  const verifier = randomBytes(32).toString("base64url");
+  const authUrl = new URL(meta.authorization_endpoint);
+  Object.entries({ response_type: "code", client_id: reg.client_id, redirect_uri: "http://127.0.0.1:9/cb", code_challenge: createHash("sha256").update(verifier).digest("base64url"), code_challenge_method: "S256", state: "s" })
+    .forEach(([k, v]) => authUrl.searchParams.set(k, v));
+  const reqId = (await (await fetch(authUrl)).text()).match(/name="request" value="([^"]+)"/)![1];
+  const ok = await fetch(`${base}/baan/login`, {
+    method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ request: reqId, password: readFileSync(join(dir, "pw.txt"), "utf8").trim(), action: "allow" }),
+  });
+  const code = new URL(ok.headers.get("location")!).searchParams.get("code")!;
+  const tok = await (await fetch(meta.token_endpoint, {
+    method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "authorization_code", code, code_verifier: verifier, client_id: reg.client_id, redirect_uri: "http://127.0.0.1:9/cb" }),
+  })).json();
+  return tok.access_token;
+}
+
 before(async () => {
   port = await freePort();
   base = `http://127.0.0.1:${port}`;
@@ -157,6 +181,25 @@ test("read returns images as the original bytes, not resized", async () => {
   const rr = await call("read", { path: "blob.bin" });
   assert.ok(rr.isError && /binary/.test(rr.content[0].text), "non-image binary files are still refused");
   assert.equal((await call("read", { path: "a/hello.txt" })).content[0].type, "text", "text files still read as text");
+});
+
+const hasMagick = ["magick", "convert"].some((b) => spawnSync(b, ["-version"]).status === 0);
+test("apps that drop image blocks (Gemini registers as \"Google\") get the picture as base64 JPEG text", { skip: !hasMagick && "ImageMagick not installed" }, async () => {
+  const gtoken = await login("Google");
+  const r = (await rpc("tools/call", { name: "read", arguments: { path: "big.png" } }, gtoken)).body.result;
+  assert.ok(!r.isError, JSON.stringify(r).slice(0, 500));
+  assert.equal(r.content.length, 1);
+  assert.equal(r.content[0].type, "text");
+  const text: string = r.content[0].text;
+  assert.match(text, /2400x1600 px/);
+  const b64 = text.match(/-----BEGIN IMAGE image\/jpeg BASE64-----\n([A-Za-z0-9+/=]+)\n-----END IMAGE-----/)![1];
+  const jpg = Buffer.from(b64, "base64");
+  assert.deepEqual([...jpg.subarray(0, 3)], [0xff, 0xd8, 0xff], "not a JPEG");
+  const im7 = spawnSync("magick", ["-version"]).status === 0;
+  const id = spawnSync(im7 ? "magick" : "identify", [...(im7 ? ["identify"] : []), "-format", "%wx%h", "-"], { input: jpg, encoding: "utf8" });
+  assert.equal(id.stdout.trim(), "768x512");
+  // Other apps still get the original image block.
+  assert.equal((await call("read", { path: "big.png" })).content[1].type, "image");
 });
 
 test("audit log records tool calls", () => {

@@ -24,6 +24,8 @@ export interface ToolContext {
   signal?: AbortSignal;
   /** Names of every tool currently enabled. */
   toolNames: string[];
+  /** The calling AI app, from its OAuth registration (client_name), e.g. "Claude", "ChatGPT", "Google" (Gemini). */
+  client?: { id: string; name?: string };
 }
 
 export interface ToolDef {

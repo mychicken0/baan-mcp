@@ -107,6 +107,8 @@ export default plugin;
 ### `image` plugin
 With it on, `read` on a picture checks the file's real format (PNG, JPEG, GIF, WebP), reads its width × height from the header, and sends the bytes **unchanged**. Files over `maxBytes` are refused instead of shrunk. (The AI app may still scale images on its own side; baan never does.)
 
+Exception: apps that drop image blocks from tool results. The Gemini web app (it registers as `Google`) passes only text to the model, so for apps listed in `textClients` (default `[Google]`) `read` sends the picture as **base64 JPEG text** instead, scaled to fit `textMaxDim` px (default 768, quality `textQuality` 80) with ImageMagick. The model decodes it on its side (e.g. in its code tool) and looks at it. Set `textClients: []` to turn this off.
+
 ## Security notes
 - Password is stored as a scrypt hash; access/refresh tokens are stored as SHA-256 hashes in `state.json` (mode 600).
 - Login page locks after `auth.maxFailedLogins` wrong passwords for `auth.lockoutSec`.
